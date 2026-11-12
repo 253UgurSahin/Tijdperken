@@ -35,7 +35,7 @@ import { G, newGame, placeName } from '../game/state';
 import { setView } from '../input/input';
 import { measureHud } from '../main';
 import { dailyLine, medalCount, modsHTML, showChallenges } from './challenges';
-import { ageTimeline, fmt } from './format';
+import { fmt } from './format';
 import { ico } from './glyphs';
 import { sigs } from './header';
 import { setSpeed, toast, lastSpeed } from './hud';
@@ -64,6 +64,7 @@ interface ModalOpts {
 export function openModal(html: string, { locked = false, cls = '', onClose = null }: ModalOpts = {}) {
   $('#sheet').innerHTML = html;
   $('#sheet').className = cls ? `sheet ${cls}` : 'sheet';
+  $('#sheet').onkeydown = null; // alleen het pauzemenu zet er pijltjes-besturing op (zie openPause)
   store.modalLocked = locked;
   onModalClose = onClose;
   if ($('#modal').hidden) prevSpeed = G.speed;
@@ -210,26 +211,37 @@ export function openPause() {
   const challengeInfo = challenge
     ? `<div class="sect">Doel: ${goalText(challenge.goal)}</div>${modsHTML(challenge)}`
     : '';
-  openModal(`<div class="eyebrow">${placeName()} · dag ${G.day} · ${AGES[G.age].n}</div><h1>Gepauzeerd</h1>
-  <p>${stats}</p>
-  <p class="pworld">${world}</p>
-  ${challengeInfo}
-  ${peopleBarHTML()}
-  <div class="mstack" style="margin-top:18px">
-    <button class="mbtn primary" data-m="close"><span>Hervatten</span><small>terug naar het spel</small></button>
-    <div class="mpair">
-      <button class="mbtn" data-m="save"><span>Opslaan</span><small>kies uit 3 plekken</small></button>
-      <button class="mbtn" data-m="load"><span>Laden</span><small>${lastSaveLine()}</small></button>
-    </div>
-    <div class="mpair">
-      <button class="mbtn" data-m="profile"><span>Prestaties</span><small>${achievementsLine()}</small></button>
-      <button class="mbtn" data-m="help"><span>Uitleg</span><small>besturing</small></button>
-    </div>
-    <div class="mpair">
-      <button class="mbtn" data-m="settings"><span>Instellingen</span><small>geluid · weergave</small></button>
-      <button class="mbtn" data-m="title"><span>Hoofdmenu</span><small>slaat eerst op</small></button>
-    </div>
-  </div>`);
+  // Zelfde stijl als het hoofdmenu: links een lijst over de wazige wereld, de gegevens van je wereld ingeklapt
+  const item = (key: string, label: string, sub: string, cls = '') =>
+    `<button class="titem ${cls}" data-m="${key}" role="menuitem"><span class="tl">${label}</span><span class="ts">${sub}</span></button>`;
+  openModal(
+    `<div class="thome phome">
+    <div class="tbrand"><div class="tag">Gepauzeerd</div><div class="pplace">${placeName()}</div><div class="pmeta">dag ${G.day} · ${AGES[G.age].n}</div></div>
+    <nav class="tmenu" role="menu" aria-label="Pauzemenu">
+      ${item('close', 'Hervatten', 'terug naar het spel (Esc)', 'primary')}
+      ${item('save', 'Opslaan', 'kies uit drie plekken')}
+      ${item('load', 'Laden', lastSaveLine())}
+      ${item('settings', 'Instellingen', 'geluid · beeld · besturing')}
+      ${item('help', 'Uitleg', 'besturing en spelregels')}
+      ${item('profile', 'Prestaties', achievementsLine())}
+      ${item('title', 'Hoofdmenu', 'je spel wordt eerst opgeslagen')}
+    </nav>
+    <details class="pinfo"><summary>Over deze wereld</summary><div class="pcard"><p>${stats}</p><p class="pworld">${world}</p>${challengeInfo}${peopleBarHTML()}</div></details>
+  </div>`,
+    { cls: 'pause' },
+  );
+  const sheet = $('#sheet');
+  const list = [...sheet.querySelectorAll<HTMLElement>('.titem')];
+  // Muis en pijltjes wijzen dezelfde keuze aan (zoals in het hoofdmenu)
+  for (const b of list) b.onmouseenter = () => b.focus({ preventScroll: true });
+  sheet.onkeydown = e => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const at = list.indexOf(document.activeElement as HTMLElement);
+    list[(at + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length].focus();
+    sfx('tick');
+  };
+  if (!matchMedia('(pointer:coarse)').matches) list[0].focus({ preventScroll: true });
 }
 // Instellingen: vier tabbladen. Elke knop zegt met data-* wat hij verandert, zodat één
 // klik-afhandeling (hieronder) alles kan doen.
@@ -467,56 +479,91 @@ export function showTitle({ setup = false, challenges = false, focus = null }: T
   document.body.classList.add('titled');
   const leaveTitle = () => {
     el.hidden = true;
+    el.classList.remove('home');
     document.body.classList.remove('titled');
     setSpeed(lastSpeed || 1); // het tempo van voor het menu (2× of 4×) blijft
   };
+  // Het hoofdmenu: groot logo en één lijst met keuzes, zoals in een echte game. "Nieuw spel" opent een tweede
+  // lijst met de vier manieren om te beginnen. Pijltjes omhoog/omlaag en Enter werken ook.
+  let submenu = false;
+  const item = (key: string, label: string, sub: string, cls = '') =>
+    `<button class="titem ${cls}" data-t="${key}" role="menuitem"><span class="tl">${label}</span><span class="ts">${sub}</span></button>`;
   const drawHome = () => {
     // "Verder spelen": het spel dat nu draait, anders de nieuwste opslag. Bij een uitdaging staat haar naam
     // erbij, anders de naam van je stad.
     const slots = listSlots();
     const newest = latestSlot(slots);
     const next = isLiveGame() ? currentMeta() : newest ? slots[newest] : null;
-    const continueButton = next
-      ? `<button class="mbtn primary" data-t="cont"><span>Verder spelen</span><small>${slotTitle(next)} · dag&nbsp;${next.day} · ${AGES[next.age].n}</small></button>`
-      : '';
-    // Laden staat naast Prestaties als er iets opgeslagen is
     const saved = filledCount(slots);
-    const profileButton = `<button class="mbtn" data-t="profile"><span>Prestaties</span><small>${achievementsLine()}</small></button>`;
-    const profileRow = saved
-      ? `<div class="mpair"><button class="mbtn" data-t="load"><span>Laden</span><small class="whole">${saved} ${saved === 1 ? 'opslag' : 'opslagen'}</small></button>${profileButton}</div>`
-      : profileButton;
-    el.innerHTML = `<div class="tw">
-    <div class="tag">Van vuursteen tot sterrenpoort</div>
-    <div class="logo">Tijdperken</div>
-    <div class="agesrow">${ageTimeline(next ? next.age : 0, true)}<div class="tlends"><span>vuursteen</span><span>sterrenpoort</span></div></div>
-    <div class="mstack">
-      ${continueButton}
-      <div class="mpair">
-        <button class="mbtn ${next ? '' : 'primary'}" data-t="quick"><span>Snel spel</span><small class="whole">±25 minuten · 3 tijdperken</small></button>
-        <button class="mbtn" data-t="new"><span>Nieuwe wereld</span><small class="whole">volk · kaart · doel</small></button>
+    const items = submenu
+      ? [
+          item('quick', 'Snel spel', '±25 minuten · drie tijdperken · meteen beginnen', 'primary'),
+          item('new', 'Nieuwe wereld', 'kies je volk, de kaart en hoe je wint'),
+          item('challenges', 'Uitdagingen', `${medalCount()} van ${SCENARIOS.length} medailles`),
+          item('daily', 'Wereld van de dag', dailyLine()),
+          item('back', '← Terug', 'naar het hoofdmenu', 'back'),
+        ]
+      : [
+          next
+            ? item(
+                'cont',
+                'Verder spelen',
+                `${slotTitle(next)} · dag ${next.day} · ${AGES[next.age].n}`,
+                'primary',
+              )
+            : '',
+          item('newmenu', 'Nieuw spel', 'snel spel · nieuwe wereld · uitdagingen', next ? '' : 'primary'),
+          `<button class="titem" data-t="together" role="menuitem" hidden><span class="tl">Samen spelen</span><span class="ts">ranglijst van vandaag · dorpen van anderen</span></button>`,
+          saved ? item('load', 'Laden', `${saved} ${saved === 1 ? 'opslag' : 'opslagen'}`) : '',
+          item('profile', 'Prestaties', achievementsLine()),
+          item('settings', 'Instellingen', 'geluid · beeld · besturing'),
+          item('help', 'Uitleg', 'besturing en spelregels'),
+        ];
+    el.classList.add('home');
+    el.innerHTML = `<div class="thome">
+      <div class="tbrand">
+        <div class="tag">${submenu ? 'Nieuw spel' : 'Van vuursteen tot sterrenpoort'}</div>
+        <div class="logo">Tijdperken</div>
       </div>
-      <div class="mpair">
-        <button class="mbtn" data-t="challenges"><span>Uitdagingen</span><small class="whole">${medalCount()}/${SCENARIOS.length} medailles</small></button>
-        <button class="mbtn" data-t="daily"><span>Wereld van de dag</span><small class="whole">${dailyLine()}</small></button>
-      </div>
-    </div>
-    <div class="mstack">
-      <button class="mbtn" data-t="together" hidden><span>Samen spelen</span><small class="whole">ranglijst van vandaag · dorpen van anderen</small></button>
-      ${profileRow}
-      <div class="mpair">
-        <button class="mbtn" data-t="help"><span>Uitleg</span><small>besturing</small></button>
-        <button class="mbtn" data-t="settings"><span>Instellingen</span><small>geluid · camera</small></button>
-      </div>
-    </div>
-    <div class="tfoot">Negen tijdperken · seizoenen · muren · onderzoek · voortgang wordt in deze browser bewaard</div>
+      <nav class="tmenu ${submenu ? 'sub' : ''}" role="menu" aria-label="${submenu ? 'Nieuw spel' : 'Hoofdmenu'}">${items.join('')}</nav>
+      <div class="tfoot">Negen tijdperken, van vuursteen tot sterrenpoort · je voortgang blijft in deze browser bewaard</div>
     </div>`;
     el.onclick = onHomeClick;
-    el.oninput = el.onchange = el.onkeydown = null;
+    el.oninput = el.onchange = null;
+    el.onkeydown = onHomeKey;
+    // Muis en toetsenbord wijzen dezelfde keuze aan: zo licht er altijd maar één regel op
+    for (const b of el.querySelectorAll<HTMLElement>('.titem'))
+      b.onmouseenter = () => b.focus({ preventScroll: true });
     // Samen spelen kan alleen in de Claude-artifact: de knop verschijnt pas als de gedeelde opslag er is
-    togetherAvailable().then(ok => {
-      const button = el.querySelector<HTMLElement>('[data-t="together"]');
-      if (ok && button) button.hidden = false;
-    });
+    if (!submenu)
+      togetherAvailable().then(ok => {
+        const button = el.querySelector<HTMLElement>('[data-t="together"]');
+        if (ok && button) button.hidden = false;
+      });
+    // Met het toetsenbord meteen kunnen kiezen: de eerste keuze krijgt de focus (zonder te scrollen)
+    if (!matchMedia('(pointer:coarse)').matches)
+      el.querySelector<HTMLElement>('.titem')?.focus({ preventScroll: true });
+  };
+  // Pijltjes kiezen een andere regel; Escape gaat in het submenu terug
+  const onHomeKey = (e: KeyboardEvent) => {
+    const list = [...el.querySelectorAll<HTMLElement>('.titem:not([hidden])')];
+    const at = list.indexOf(document.activeElement as HTMLElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      list[(at + step + list.length) % list.length]?.focus();
+      sfx('tick');
+    } else if (e.key === 'Escape' && submenu) {
+      e.preventDefault();
+      e.stopPropagation();
+      submenu = false;
+      drawHome();
+    }
+  };
+  // Een sub-scherm (nieuwe wereld, uitdagingen, ...) gebruikt het gewone kaartje: dan is het geen hoofdmenu meer
+  const leaveHome = () => {
+    el.classList.remove('home');
+    el.onkeydown = null;
   };
   // Een nieuwe wereld of uitdaging beginnen: nieuwe wereld, meteen bewaren, titelscherm dicht
   const startGame = (opts: NewGameOptions) => {
@@ -543,26 +590,40 @@ export function showTitle({ setup = false, challenges = false, focus = null }: T
   };
   // Staat je spel van nu alleen op de automatische plek? Dan zegt een zin onder Begin dat het daarna weg is.
   const replaceWarning = () => (liveGameAtRisk() ? replaceWarningText(currentMeta()) : '');
-  const openSetup = () =>
+  const openSetup = () => {
+    leaveHome();
     showNewGame(el, draft, { warning: replaceWarning(), onBack: drawHome, onStart: startGame });
-  const openChallenges = (focusOn: string | null = null) =>
+  };
+  const openChallenges = (focusOn: string | null = null) => {
+    leaveHome();
     showChallenges(el, { focus: focusOn, warning: replaceWarning(), onBack: drawHome, onStart: startGame });
+  };
   const onHomeClick = (e: MouseEvent) => {
     const t = (e.target as HTMLElement).closest('button');
     if (!t) return;
     sfx('tick');
-    if (t.dataset.t === 'help') showHelp();
-    else if (t.dataset.t === 'settings') showSettings();
+    const k = t.dataset.t;
+    if (k === 'newmenu' || k === 'back') {
+      submenu = k === 'newmenu';
+      drawHome();
+      return;
+    }
+    if (k === 'help') showHelp();
+    else if (k === 'settings') showSettings();
     // Hoe het venster ook dichtgaat (Klaar, Esc of een klik ernaast): daarna het titelscherm opnieuw tekenen
-    else if (t.dataset.t === 'profile') showProfile({ onClose: drawHome });
-    else if (t.dataset.t === 'new') openSetup();
+    else if (k === 'profile') showProfile({ onClose: drawHome });
     // Snel spel: meteen beginnen met je laatste volk en moeilijkheid, een gewone kaart en één doel
-    else if (t.dataset.t === 'quick') quickGame();
-    else if (t.dataset.t === 'challenges') openChallenges();
-    else if (t.dataset.t === 'daily') openChallenges(DAILY);
-    else if (t.dataset.t === 'together') showTogether(el, { onBack: drawHome });
-    else if (t.dataset.t === 'load') showLoadScreen({ onLoaded: leaveTitle, onClose: drawHome });
-    else if (t.dataset.t === 'cont') continueGame();
+    else if (k === 'quick') quickGame();
+    else if (k === 'load') showLoadScreen({ onLoaded: leaveTitle, onClose: drawHome });
+    else if (k === 'cont') continueGame();
+    else {
+      // De schermen hieronder vullen het titelscherm zelf (met een kaartje); Terug brengt je hier weer
+      leaveHome();
+      if (k === 'new') openSetup();
+      else if (k === 'challenges') openChallenges();
+      else if (k === 'daily') openChallenges(DAILY);
+      else if (k === 'together') showTogether(el, { onBack: drawHome });
+    }
   };
   // Verder met het spel dat nu draait, of de nieuwste opslag laden (bijv. na een verloren spel).
   // Lukt laden niet, dan meteen het laadscherm met de melding erin: een gewone melding valt achter het titelscherm.

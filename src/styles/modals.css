@@ -383,3 +383,373 @@
   font-weight: 700;
   box-shadow: 0 2px 0 var(--acc-edge);
 }
+
+/* ---- hoofdmenu (zie showTitle in ui/modals.ts): de wereld vult het scherm, links één lijst met keuzes ---- */
+#title.home {
+  align-items: stretch;
+  padding-left: max(7vw, 40px, env(safe-area-inset-left, 0px));
+  background:
+    linear-gradient(90deg, rgba(16, 11, 6, 0.9) 0%, rgba(16, 11, 6, 0.7) 28%, rgba(16, 11, 6, 0) 62%),
+    linear-gradient(0deg, rgba(16, 11, 6, 0.55) 0%, rgba(16, 11, 6, 0) 35%);
+}
+.thome {
+  --cream: #f4ecda;
+  width: min(480px, 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: clamp(18px, 4vh, 40px);
+  margin-block: auto;
+  padding-block: 24px;
+  color: var(--cream);
+}
+#title .thome .tag {
+  font-family: var(--f-display);
+  font-style: italic;
+  font-size: 18px;
+  color: color-mix(in srgb, var(--acc) 70%, var(--cream));
+  letter-spacing: 0.01em;
+}
+#title .thome .logo {
+  position: relative;
+  font-family: var(--f-display);
+  font-weight: 900;
+  font-size: clamp(60px, 7.5vw, 112px);
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+  font-variation-settings:
+    'SOFT' 100,
+    'WONK' 1;
+  color: var(--cream);
+  text-shadow:
+    0 3px 0 rgba(0, 0, 0, 0.35),
+    0 18px 40px rgba(0, 0, 0, 0.45);
+  padding-bottom: 18px;
+}
+#title .thome .logo::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  bottom: 0;
+  width: 58%;
+  height: 12px;
+  background: var(--acc);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='10'%3E%3Cpath d='M0 6 Q10 0 20 5 T40 5' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round'/%3E%3C/svg%3E")
+    repeat-x left center / 40px 12px;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='10'%3E%3Cpath d='M0 6 Q10 0 20 5 T40 5' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round'/%3E%3C/svg%3E")
+    repeat-x left center / 40px 12px;
+}
+.tmenu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+/* Eén keuze: grote tekst, en bij aanwijzen een gloeiend streepje links met de toelichting eronder */
+.titem,
+.titem:active:not(:disabled) {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: 9px 18px 9px 22px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  box-shadow: none;
+  color: var(--cream);
+  transform: none;
+  transition:
+    background 0.18s,
+    padding-left 0.18s;
+}
+.titem::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--acc);
+  box-shadow: 0 0 14px var(--acc);
+  transform: scaleY(0);
+  transition: transform 0.18s;
+}
+.titem .tl {
+  font-family: var(--f-display);
+  font-size: clamp(24px, 2.4vw, 30px);
+  font-weight: 650;
+  line-height: 1.15;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+.titem .ts {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  font-family: var(--f-mono);
+  font-size: 12.5px;
+  color: color-mix(in srgb, var(--cream) 72%, transparent);
+  transition:
+    max-height 0.2s,
+    opacity 0.2s,
+    margin 0.2s;
+}
+.titem:hover:not(:disabled),
+.titem:focus {
+  padding-left: 30px;
+  border: 0;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--acc) 26%, transparent), transparent 85%);
+  outline: none;
+}
+.titem:hover::before,
+.titem:focus::before {
+  transform: scaleY(1);
+}
+.titem:hover .ts,
+.titem:focus .ts,
+.titem.primary .ts {
+  max-height: 2.6em;
+  opacity: 1;
+  margin-top: 2px;
+}
+/* De belangrijkste keuze (verder spelen, of beginnen) staat er groter en in de tijdperkkleur */
+.titem.primary .tl {
+  font-size: clamp(30px, 3vw, 38px);
+  font-weight: 800;
+  color: color-mix(in srgb, var(--acc) 55%, var(--cream));
+}
+.titem.primary {
+  margin-bottom: 8px;
+}
+.titem.back .tl {
+  font-size: 20px;
+  color: color-mix(in srgb, var(--cream) 75%, transparent);
+}
+.thome .tfoot {
+  border: 0;
+  padding: 0;
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--cream) 50%, transparent);
+}
+/* Binnenkomen: logo en keuzes schuiven zacht het beeld in */
+.thome .tbrand,
+.thome .titem {
+  animation: tin 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.thome .titem:nth-child(2) {
+  animation-delay: 0.04s;
+}
+.thome .titem:nth-child(3) {
+  animation-delay: 0.08s;
+}
+.thome .titem:nth-child(4) {
+  animation-delay: 0.12s;
+}
+.thome .titem:nth-child(5) {
+  animation-delay: 0.16s;
+}
+.thome .titem:nth-child(n + 6) {
+  animation-delay: 0.2s;
+}
+@keyframes tin {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+}
+body.calm .thome .tbrand,
+body.calm .thome .titem {
+  animation: none;
+}
+/* Telefoon en tablet: het menu onderin, de toelichting altijd zichtbaar (aanwijzen bestaat daar niet) */
+@media (pointer: coarse), (max-width: 620px) {
+  .titem .ts {
+    max-height: 2.6em;
+    opacity: 1;
+    margin-top: 1px;
+  }
+}
+@media (max-width: 620px) {
+  #title.home {
+    padding: 16px;
+    background: linear-gradient(
+      0deg,
+      rgba(16, 11, 6, 0.92) 0%,
+      rgba(16, 11, 6, 0.75) 55%,
+      rgba(16, 11, 6, 0.3) 100%
+    );
+  }
+  .thome {
+    justify-content: flex-end;
+    margin-block: auto 0;
+    gap: 16px;
+  }
+  #title .thome .logo {
+    font-size: 54px;
+  }
+  .titem {
+    padding: 8px 12px 8px 16px;
+  }
+  .titem:hover:not(:disabled),
+  .titem:focus {
+    padding-left: 22px;
+  }
+  .titem .tl {
+    font-size: 22px;
+  }
+  .titem.primary .tl {
+    font-size: 28px;
+  }
+}
+/* Liggende telefoon: alles moet zonder scrollen passen, dus kleiner en alleen bij de hoofdkeuze een toelichting */
+@media (max-height: 560px) {
+  #title.home {
+    padding-block: 10px;
+  }
+  .thome {
+    gap: 8px;
+    padding-block: 0;
+  }
+  #title .thome .tag,
+  .thome .tfoot {
+    display: none;
+  }
+  #title .thome .logo {
+    font-size: 36px;
+    padding-bottom: 8px;
+  }
+  #title .thome .logo::after {
+    height: 8px;
+  }
+  .titem,
+  .titem:hover:not(:disabled),
+  .titem:focus {
+    padding-block: 3px;
+  }
+  .titem .tl {
+    font-size: 19px;
+  }
+  .titem.primary {
+    margin-bottom: 2px;
+  }
+  .titem.primary .tl {
+    font-size: 23px;
+  }
+  .titem:not(.primary) .ts {
+    display: none;
+  }
+  /* De hoofdkeuze over de hele breedte, de rest in twee kolommen */
+  .tmenu {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 8px;
+    width: min(560px, 100%);
+  }
+  .titem.primary {
+    grid-column: 1 / -1;
+  }
+  .thome {
+    width: min(560px, 100%);
+  }
+}
+/* Ultrabreed: het donkere verloop niet over de halve wereld, alleen achter het menu */
+@media (min-aspect-ratio: 2/1) {
+  #title.home {
+    background:
+      linear-gradient(90deg, rgba(16, 11, 6, 0.9) 0%, rgba(16, 11, 6, 0.7) 18%, rgba(16, 11, 6, 0) 40%),
+      linear-gradient(0deg, rgba(16, 11, 6, 0.5) 0%, rgba(16, 11, 6, 0) 30%);
+  }
+}
+
+/* ---- pauzemenu: dezelfde stijl als het hoofdmenu (zie openPause in ui/modals.ts) ---- */
+#modal:has(.sheet.pause) {
+  place-items: center start;
+  padding-left: max(7vw, 24px, env(safe-area-inset-left, 0px));
+  background:
+    linear-gradient(90deg, rgba(16, 11, 6, 0.88) 0%, rgba(16, 11, 6, 0.6) 30%, rgba(16, 11, 6, 0.15) 65%),
+    rgba(16, 11, 6, 0.15);
+}
+.sheet.pause {
+  width: min(480px, 100%);
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 8px 4px;
+}
+.sheet .thome {
+  zoom: 1; /* het blad zelf wordt al vergroot op grote schermen */
+  gap: 20px;
+  padding: 0;
+}
+.phome .tag {
+  font-family: var(--f-display);
+  font-style: italic;
+  font-size: 18px;
+  color: color-mix(in srgb, var(--acc) 70%, var(--cream));
+}
+.phome .pplace {
+  font-family: var(--f-display);
+  font-weight: 900;
+  font-size: clamp(40px, 4.4vw, 60px);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+}
+.phome .pmeta {
+  margin-top: 6px;
+  font-family: var(--f-mono);
+  font-size: 13px;
+  color: color-mix(in srgb, var(--cream) 70%, transparent);
+}
+/* De gegevens van je wereld: ingeklapt, en open op een papiertje zodat alles leesbaar blijft */
+.pinfo summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: color-mix(in srgb, var(--cream) 75%, transparent);
+  padding: 4px 22px;
+}
+.pinfo .pcard {
+  margin-top: 8px;
+  padding: 14px 16px;
+  border-radius: var(--r);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--card-shadow);
+}
+.pinfo .pcard p {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+@media (max-width: 620px) {
+  .sheet .thome {
+    gap: 10px;
+  }
+  .phome .pplace {
+    font-size: 34px;
+  }
+  #modal:has(.sheet.pause) {
+    place-items: end stretch;
+    padding: 16px;
+    background: linear-gradient(
+      0deg,
+      rgba(16, 11, 6, 0.92) 0%,
+      rgba(16, 11, 6, 0.7) 60%,
+      rgba(16, 11, 6, 0.3) 100%
+    );
+  }
+}
+@media (max-height: 560px) {
+  .phome .tag,
+  .phome .pmeta,
+  .pinfo {
+    display: none;
+  }
+  .phome .pplace {
+    font-size: 30px;
+  }
+  .sheet .thome {
+    gap: 8px;
+  }
+}

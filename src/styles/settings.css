@@ -107,6 +107,7 @@ body.calm *::after {
 #hintbar,
 #bar,
 #title .tw,
+.thome,
 .sheet {
   zoom: calc(var(--hud-zoom, 1) * var(--ui-scale, 1));
 }
