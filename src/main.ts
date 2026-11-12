@@ -124,6 +124,7 @@ import { QUICK_AGE } from './data/victories';
 const FIRST_GAME = { victories: ['quick'], size: 256 };
 
 let nightShadersReady = false;
+let skipFrame = false;
 let lastT = performance.now(),
   acc = 0,
   uiT = 0,
@@ -231,7 +232,10 @@ function tick(now: number) {
   store.alpha = G.speed && !G.over ? Math.min(1, acc * 30) : 1;
   measure('sim', t0);
   t0 = performance.now();
-  render();
+  // Achter een venster (pauze, een keuze) is de wereld wazig en staat hij meestal stil: dan is 30 beeldjes
+  // per seconde genoeg. Dat scheelt de videokaart de helft, vooral op grote schermen.
+  skipFrame = !modalEl.hidden && !skipFrame;
+  if (!skipFrame) render();
   // Muziek: overdag licht, 's nachts rustig, donkerder tijdens een aanval (niet op het titelscherm)
   tickMusic(titleEl.hidden ? darkness() : 0.5, titleEl.hidden && G.foes.some(isRaider));
   if (!nightShadersReady) {

@@ -27,7 +27,7 @@ export const LEVELS: Record<string, QualityLevel> = {
   low: {
     name: 'Laag',
     scale: 0.7,
-    pixels: 3e6,
+    pixels: 2.2e6,
     shadows: false,
     shadowMap: 1024,
     post: false,
@@ -40,7 +40,7 @@ export const LEVELS: Record<string, QualityLevel> = {
   mid: {
     name: 'Middel',
     scale: 0.85,
-    pixels: 6e6,
+    pixels: 3.8e6,
     shadows: true,
     shadowMap: 1024,
     post: true,
@@ -52,7 +52,9 @@ export const LEVELS: Record<string, QualityLevel> = {
   high: {
     name: 'Hoog',
     scale: 1,
-    pixels: 9e6, // genoeg voor een 4K-scherm; daarboven ziet niemand het verschil, de videokaart wel
+    // Ongeveer 1440p-ultrawide. Een 4K- of 5K2K-scherm rekent met minder pixels en wordt verscherpt opgeschaald:
+    // het verschil zie je nauwelijks, de videokaart wel (dat was de grootste oorzaak van haperen)
+    pixels: 6e6,
     shadows: true,
     shadowMap: 2048,
     post: true,
@@ -148,7 +150,11 @@ export function tickQuality(rdt: number) {
   const fps = frames / time;
   frames = 0;
   time = 0;
-  if (fps < 45) {
+  if (fps < 35) {
+    // Flink haperen: niet wachten, meteen een stap omlaag
+    slow = 2;
+    fast = 0;
+  } else if (fps < 45) {
     slow++;
     fast = 0;
   } else if (fps > 57) {
@@ -164,7 +170,7 @@ export function tickQuality(rdt: number) {
     tooHeavy = level;
     tooHeavyAt = performance.now();
     if (store.resScale! > L.scale - 0.2 + 0.01) {
-      store.resScale = Math.max(0.5, store.resScale! - 0.1);
+      store.resScale = Math.max(0.5, store.resScale! - (fps < 35 ? 0.2 : 0.1));
       requestResize();
     } else if (ORDER.indexOf(level) > 0) apply(ORDER[ORDER.indexOf(level) - 1], true);
     else if (store.resScale! > 0.5) {
