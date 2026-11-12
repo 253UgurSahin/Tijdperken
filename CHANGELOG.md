@@ -3,6 +3,26 @@
 Alle wijzigingen uit de "wereldwijde hit"-ronde (analyse → bugfixes → techniek → gameplay → polish), in gewone
 taal. Per bug: wat er misging, hoe het is opgelost en hoe dat is gecontroleerd. Nieuwste bovenaan.
 
+## Versie 0.4.0 (november 2026)
+
+Meer basisbouw, meer spelgevoel, schermen van telefoon tot 5K2K, en voor het eerst samen spelen.
+
+- **Sfeer (nieuw tabblad, toets G):** tien soorten versiering, één of meer per tijdperk (bloemperk, totempaal,
+  waterput, standbeeld, fontein, tulpenveld, muziektent, stadspark, holofontein, sterrentuin). Versiering maakt
+  huizen in de buurt gezelliger; fabrieken, groeves en centrales maken ze somber. Een huis is Somber (−10%
+  inwoners), Gewoon, Gezellig (+10%) of Prachtig (+20%), altijd minstens één inwoner verschil. Waterput, windmolen
+  en tulpenveld laten akkers in de buurt sneller oogsten (samen hoogstens +40%). Bij het plaatsen zie je het
+  bereik en welke huizen of akkers het merken; het paneel Dorp toont een balk met hoe gezellig je huizen zijn.
+- **Spelgevoel:** geleverde grondstoffen vliegen als icoontje naar hun teller, die even aantikt. Is versiering klaar,
+  dan zie je "+2 sfeer" boven de huizen die het merken.
+- **Samen spelen (alleen in de Claude-artifact):** een ranglijst van de wereld van de dag (je score komt er vanzelf
+  op) en de dorpen van anderen als plattegrond, met een knop om je eigen dorp te delen. Namen worden nooit
+  bewaard, alleen een id; wat anderen delen wordt gecontroleerd voordat het in beeld komt. Wie alleen mag kijken,
+  ziet alles maar kan niet delen. Buiten de artifact (GitHub Pages) staat de knop er niet.
+- **Geen browserzoom:** knijpen, Ctrl+scrollen en Ctrl +/−/0 zoomen nooit meer de pagina, wel de camera.
+- **Schermen:** op een liggende telefoon staat het bouwpaneel rechts, zodat je de wereld ziet. Gecontroleerd op
+  iPhone (staand en liggend), een kleine Android, iPad Mini, 3440×1440 en 5120×2160 (op 100% en 150%).
+
 ## Versie 0.3.0 (november 2026)
 
 Het spel staat nu in deze repository (eerder `Tijdperk`), met de hele geschiedenis erbij. Deze ronde: een

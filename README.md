@@ -65,6 +65,10 @@ Een real-time strategiespel in de browser: leid je stam van de **steentijd** naa
 - Paneel Verbeteren: werktuigen en wapens, gebouwen een niveau omhoog (ook alles tegelijk, met de totale kosten),
   verouderde gebouwen op dezelfde plek vernieuwen naar hun opvolger, oude wegen in één keer vernieuwen en alle
   gebouwen herstellen
+- Sfeer (tabblad Sfeer, toets G): versiering per tijdperk maakt huizen in de buurt gezelliger (meer inwoners),
+  fabrieken maken ze somber; een waterput, windmolen of tulpenveld laat akkers in de buurt sneller oogsten
+- Samen spelen (alleen in de Claude-artifact): een ranglijst van de wereld van de dag en de dorpen van anderen
+  bekijken of je eigen dorp delen, via de gedeelde opslag van de artifact
 - Raakt een delfstof op? De steengroeve (steentijd) hakt langzaam steen uit de grond, de mijnschacht (IJzertijd)
   haalt wat koper, tin en ijzer uit de diepte, en op de markt (Middeleeuwen) koop je alles voor goud; de coach
   wijst ze aan als er geen land meer te koop is
