@@ -99,6 +99,8 @@ interface SavedRivalUnit {
   hy: number;
   until: number;
   pace: number;
+  /** Schade van zijn wapens toen hij getraind werd (ontbreekt in oudere opslag: dan die van nu). */
+  dmg?: number;
 }
 /** Een rivaal in de opslag: alles van de rivaal, met zijn gebouwen en soldaten als gewone gegevens. */
 export interface SavedRival extends Omit<Rival, 'bs'> {
@@ -1088,6 +1090,7 @@ export function saveRivals() {
       hy: f.hy,
       until: f.until,
       pace: f.pace || 0,
+      dmg: f.dmg,
     })),
   }));
 }
@@ -1122,6 +1125,8 @@ export function loadRivals(list: SavedRival[] | undefined): void {
         hy: s.hy ?? f.hy,
         until: s.until || 0,
         pace: s.pace || 0, // oudere opslag: geen marstempo, dan lopen ze op hun eigen snelheid
+        // Wapens van toen hij getraind werd, niet van het tijdperk van nu
+        dmg: typeof s.dmg === 'number' && Number.isFinite(s.dmg) ? s.dmg : f.dmg,
       });
       f.mode = ['home', 'march', 'raid', 'return'].includes(s.mode) ? s.mode : 'home';
     }

@@ -1,5 +1,5 @@
 // Opslaan en laden in de browser: drie eigen plekken en één automatische (zie data/saveslots.ts).
-import type { Building, GameState, Stance } from '../types';
+import type { Building, GameState, Offer, OfferKind, RivalOffer, Stance } from '../types';
 import { store } from '../core/store';
 import { SET } from '../core/settings';
 import { CX, CY, H, TH, TW, W, setMapSize } from '../config';
@@ -93,6 +93,7 @@ export function serialize(): string {
     'forceRaid',
     'lastEvent',
     'event',
+    'offer',
     'buffs',
     'followups',
     'eventsSeen',
@@ -164,9 +165,10 @@ export function serialize(): string {
       mhp: c.mhp,
       alive: c.alive,
     })),
+    // Een bewaker die net gesneuveld is maar nog in de lijst staat, niet bewaren (anders sterft hij twee keer)
     guards: G.foes
-      .filter(f => f.camp)
-      .map(f => ({ type: f.type, x: f.x, y: f.y, hp: f.hp, mhp: f.mhp, camp: f.camp })),
+      .filter(f => f.camp && !f.dead)
+      .map(f => ({ type: f.type, x: f.x, y: f.y, hp: f.hp, mhp: f.mhp, dmg: f.dmg, camp: f.camp })),
     // Een aanval die bezig is (geen kampbewakers, geen soldaten van rivalen: die bewaart saveRivals)
     raiders: G.foes
       .filter(f => !f.camp && !f.rival && !f.dead && !f.retreat)
@@ -198,7 +200,8 @@ interface SaveData {
   vs: { x: number; y: number; name: string; job: string; hp: number; id?: number }[];
   us: { k: string; x: number; y: number; hp: number; st?: Stance; id?: number; kills?: number }[];
   camps: { id: number; x: number; y: number; tier: number; hp: number; mhp: number; alive: boolean }[];
-  guards: { type: number; x: number; y: number; hp: number; mhp: number; camp: number }[];
+  /** dmg ontbreekt in opslagen van vóór november 2026: dan rekenen we hem uit het kampniveau. */
+  guards: { type: number; x: number; y: number; hp: number; mhp: number; dmg?: number; camp: number }[];
   /** Aanvallers die onderweg waren (ontbreekt in oudere opslag). */
   raiders?: { type: number; x: number; y: number; hp: number; mhp: number; dmg: number; boss?: number }[];
   /** Rivalen met hun gebouwen en soldaten (ontbreekt in opslag van vóór de rivalen). */
@@ -238,6 +241,28 @@ let loadTouched = false;
 // Een nummer uit de opslag, of een vaste waarde als het er niet (goed) in staat
 const num = (v: unknown, fallback: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+
+const OFFER_KINDS: readonly OfferKind[] = ['trade', 'ask', 'ally', 'demand', 'peace'];
+const isRes = (k: unknown): k is string => typeof k === 'string' && RKEYS.includes(k);
+/**
+ * Het bericht van de handelaar of een rivaal uit de opslag, of null als het verlopen of kapot is, of als de
+ * rivaal er niet meer is. Opslag van daarvóór heeft geen bericht.
+ */
+function cleanOffer(o: unknown): Offer | RivalOffer | null {
+  if (!o || typeof o !== 'object') return null;
+  const v = o as Partial<RivalOffer> & Partial<Offer>;
+  if (!Number.isFinite(v.until) || v.until! <= G.t) return null;
+  // Ruil en betalen moeten om een bestaande grondstof en een echt getal gaan
+  if (v.want !== undefined && (!isRes(v.want) || !Number.isFinite(v.amt))) return null;
+  if (v.give !== undefined && (!isRes(v.give) || !Number.isFinite(v.price))) return null;
+  if (v.from === undefined) {
+    // De handelaar: altijd een ruil
+    return v.want && v.give ? (v as Offer) : null;
+  }
+  const r = G.rivals.find(x => x.id === v.from);
+  if (!r || r.dead || !v.kind || !OFFER_KINDS.includes(v.kind)) return null;
+  return v as RivalOffer;
+}
 
 export function deserialize(str: string): boolean {
   const s: SaveData = JSON.parse(str);
@@ -318,7 +343,7 @@ export function deserialize(str: string): boolean {
   for (const k of RKEYS) if (!Number.isFinite(G.res[k])) G.res[k] = 0;
   // De grafiek-geschiedenis had toen minder kolommen: begin die opnieuw
   G.hist = fromOld ? [] : G.hist || [];
-  G.offer = null;
+  G.offer = null; // komt na de rivalen terug (zie cleanOffer hieronder)
   G.stats = Object.assign(baseState(0).stats, s.g.stats);
   // Prestaties en score: opslag van vóór het profiel begint zonder (het spel telt dan nog mee)
   G.achieved = Array.isArray(s.g.achieved) ? s.g.achieved.filter(k => ACHIEVEMENT[k]) : [];
@@ -383,9 +408,11 @@ export function deserialize(str: string): boolean {
   for (const o of s.guards) {
     const c = G.camps.find(c => c.id === o.camp);
     if (!c) continue;
-    const f = spawnFoe(fromOld ? (OLD_AGE[o.type] ?? o.type) : o.type, o.x, o.y, 1, c);
+    // Zelfde sterkte als bij het neerzetten van het kamp (zie spawnCampGuards in game/state.ts)
+    const f = spawnFoe(fromOld ? (OLD_AGE[o.type] ?? o.type) : o.type, o.x, o.y, 1 + c.tier * 0.15, c);
     f.hp = o.hp;
     f.mhp = o.mhp;
+    f.dmg = num(o.dmg, f.dmg);
     f.hx = c.x + 1 + (Math.random() - 0.5) * 3;
     f.hy = c.y + 1 + (Math.random() - 0.5) * 3;
   }
@@ -402,6 +429,8 @@ export function deserialize(str: string): boolean {
   // Rivalen: opslag van daarvóór heeft er geen. Het gekozen aantal is wat er in het spel zit.
   loadRivals(s.rivals);
   G.opts.rivals = G.rivals.length;
+  // Een openstaand bericht (handelaar of rivaal) blijft staan: anders ontliep je een eis door te laden
+  G.offer = cleanOffer(s.g.offer);
   // Wereldwonderen: wie welk wonder heeft, volgt uit de gebouwen die er nu weer staan
   refreshWonders();
   // Laadde de poort op, maar staat hij er niet meer? Dan is die lading weg (zoals bij een verwoeste poort)
