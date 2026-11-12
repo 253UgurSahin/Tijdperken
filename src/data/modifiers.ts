@@ -170,3 +170,16 @@ export function seasonIndex(day: number, longWinter = false): number {
   }
   return 0;
 }
+
+/**
+ * Hoe ver de overgang naar het volgende seizoen is, van 0 tot 1. Meestal 0. In de laatste nacht van een seizoen
+ * loopt hij op, van 22 uur tot 6 uur 's ochtends: dan begint de nieuwe dag (en het nieuwe seizoen). Zo kan het
+ * beeld de kleuren van nu en straks mengen, in plaats van ineens om te springen. Kijkt naar het seizoen van de
+ * volgende dag, dus het klopt ook met Lange winter.
+ */
+export function seasonBlend(day: number, clock: number, longWinter = false): number {
+  if (seasonIndex(day + 1, longWinter) === seasonIndex(day, longWinter)) return 0;
+  // Uren sinds 22 uur. Tussen middernacht en 6 uur is het nog dezelfde dag (de dag telt pas om 6 uur verder).
+  const sinceTen = clock >= 22 ? clock - 22 : clock < 6 ? clock + 2 : -1;
+  return sinceTen < 0 ? 0 : Math.min(1, sinceTen / 8);
+}

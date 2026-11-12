@@ -2,6 +2,7 @@
 import * as T3 from 'three';
 import { TAU } from '../config';
 import { hash2 } from '../util/random';
+import { addSnow } from './weather';
 
 /** Materiaal-opties: e = gloeikleur, ei = gloeisterkte, m = metaalachtig, r = ruwheid, t = doorzichtig, o = dekking, b = zonder licht. */
 export interface MatOpts {
@@ -95,6 +96,7 @@ VCMAT_B.onBeforeCompile = shader => {
     .replace(
       '#include <color_fragment>',
       `#include <color_fragment>
+      float snowGrain = 0.0; // de korrel, ook voor de rand van de sneeuw (zie addSnow hieronder)
       {
         // De richting van dit vlak, uit de helling van de wereldpositie over het scherm
         vec3 fn = normalize(cross(dFdx(vWp), dFdy(vWp)));
@@ -103,6 +105,7 @@ VCMAT_B.onBeforeCompile = shader => {
         vec2 uv = abs(fn.y) > 0.5 ? vWp.xz : (abs(fn.x) > abs(fn.z) ? vWp.zy : vWp.xy);
         float grain = texture2D(uGrain, uv * 0.5).r;
         float fade = clamp(1.0 - fwidth(uv.x * 0.5) * 12.0, 0.0, 1.0);
+        snowGrain = (grain - 0.6) * fade;
         // Voegen: liggende om de 9 cm en staande om de 18 cm, elke rij een halve steen verschoven
         // (metselverband). Zacht van rand, en weg zodra ze kleiner dan een pixel worden.
         float row = vWp.y * 11.1;
@@ -115,6 +118,9 @@ VCMAT_B.onBeforeCompile = shader => {
         diffuseColor.rgb *= (1.0 - 0.3 * seam) * (1.0 + (grain - 0.6) * 0.5 * fade);
       }`,
     );
+  // In de winter sneeuw op daken, akkers, plinten en wonderen (alleen dit materiaal: figuren, ramen, glas en
+  // gloeiende delen blijven schoon). De korrel van hierboven maakt de rand van de sneeuw grillig.
+  addSnow(shader, { lo: 0.45, hi: 0.72, max: 0.9, blotch: 'snowGrain * 0.5' });
 };
 // (zelfde shader-opbouw: three.js herkent dit materiaal zo als een eigen variant)
 VCMAT_B.customProgramCacheKey = () => 'tp-building';

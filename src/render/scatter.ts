@@ -10,6 +10,7 @@ import { S3, cam } from './scene';
 import { groundVersion } from './terrainlook';
 import { BIOME, TER, biome, bmap, ground, node, road, ter } from '../world/world';
 import { settled } from '../game/rivals';
+import { SNOW_COVER, WIND_GUST } from './weather';
 
 // Ligt er water direct naast deze tegel (boven, onder, links of rechts)?
 function nextToWater(x: number, y: number): boolean {
@@ -78,24 +79,28 @@ function pebbleGeometry() {
   return g;
 }
 
-// Gras wiegt mee met de wind, net als de bomen (zie nodes.ts)
+// Gras wiegt mee met de wind (met vlagen), net als de bomen (zie nodes.ts). In de winter zakt het weg in de
+// sneeuw: hoe meer sneeuw, hoe korter de sprieten (dan steken alleen de stroachtige puntjes er nog uit).
 function swaying(m: T3.MeshLambertMaterial): T3.MeshLambertMaterial {
   m.onBeforeCompile = shader => {
     shader.uniforms.uWind = WIND;
+    shader.uniforms.uSnow = SNOW_COVER;
     // Achterkant van een spriet niet donker maken: beide kanten krijgen licht van boven
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <normal_fragment_begin>',
       T3.ShaderChunk.normal_fragment_begin.replace('normal = normal * faceDirection;', ''),
     );
     shader.vertexShader =
-      'uniform float uWind;\n' +
+      'uniform float uWind;\nuniform float uSnow;\n' +
       shader.vertexShader.replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
         vec3 ip = vec3(instanceMatrix[3][0], 0.0, instanceMatrix[3][2]);
-        float sway = sin(uWind * 2.1 + ip.x * 0.9 + ip.z * 1.1) * 0.25 + sin(uWind * 4.3 + ip.x * 2.3) * 0.08;
-        transformed.x += sway * position.y;
-        transformed.z += sway * position.y * 0.5;`,
+        float sink = 1.0 - uSnow * 0.75;
+        transformed.y *= sink;
+        float sway = (sin(uWind * 2.1 + ip.x * 0.9 + ip.z * 1.1) * 0.25 + sin(uWind * 4.3 + ip.x * 2.3) * 0.08) * ${WIND_GUST};
+        transformed.x += sway * position.y * sink;
+        transformed.z += sway * position.y * 0.5 * sink;`,
       );
   };
   m.customProgramCacheKey = () => 'grass-wind';
@@ -116,7 +121,9 @@ const PER_TILE: Record<number, Record<string, number>> = {
   [BIOME.MOUNTAIN]: { tuft: 1, flower: 0.1, pebble: 1.5 },
 };
 const FLOWER_COLORS = ['#f4f0e6', '#f2d24a', '#b48ae0', '#e8606a', '#f29a3a'].map(c => new T3.Color(c));
-const MAX: Record<string, number> = { tuft: 14000, flower: 2200, pebble: 3500 };
+// (bloemen: ruim genoeg voor de lente, met bijna twee keer zoveel; anders blijft er onderaan een strook leeg,
+// want het strooisel wordt rij voor rij neergezet)
+const MAX: Record<string, number> = { tuft: 14000, flower: 5000, pebble: 3500 };
 const KINDS: Record<string, T3.InstancedMesh> = {
   tuft: new T3.InstancedMesh(tuftGeometry(), TUFT_MAT, MAX.tuft),
   flower: new T3.InstancedMesh(flowerGeometry(), FLOWER_MAT, MAX.flower),
@@ -140,17 +147,34 @@ export function setScatterDensity(d: number) {
   for (const m of Object.values(KINDS)) m.visible = density > 0;
 }
 
-// Seizoenskleur: herfst wat geler, winter droog en strogeel (en zonder bloemen)
-const SEASON_TINT: Record<string, string> = {
-  Lente: '#ffffff',
-  Zomer: '#f4f0d8',
-  Herfst: '#e8cf8a',
-  Winter: '#e0d6b0',
-};
-let flowersOn = true;
+// Het seizoen (zie seasons.ts): een kleurfilter over het gras, hoe strogeel de plukjes zijn (winter) en hoeveel
+// bloemetjes er staan (lente meer, winter geen).
+let flowersOn = true,
+  flowerAmount = 1,
+  straw = 0;
+const STRAW = new T3.Color(0.62, 0.55, 0.36);
+/**
+ * Zet het seizoen van het strooisel. `tint` kleurt het gras (gratis, elk beeldje), `strawAmount` (0..1) maakt de
+ * plukjes strogeel en `flowers` is hoeveel bloemetjes er staan (1 = gewoon, 0 = geen). Die twee zitten in de kleur
+ * en het aantal per plukje: als ze veranderen, wordt het strooisel opnieuw neergezet. Daarom in stapjes.
+ */
+export function setScatterLook(tint: T3.Color, strawAmount: number, flowers: number): void {
+  TUFT_MAT.color.copy(tint);
+  const s = Math.round(strawAmount * 12) / 12;
+  if (s === straw && flowers === flowerAmount) return;
+  straw = s;
+  flowerAmount = flowers;
+  flowersOn = flowers > 0;
+  placed.r = -1; // opnieuw neerzetten, met de nieuwe kleuren en het nieuwe aantal bloemen
+}
+// Oude manier, alleen nog voor applySeason in lighting.ts (die verdwijnt bij het samenvoegen: dan dit ook)
+const OLD_TINT: Record<string, string> = { Zomer: '#f4f0d8', Herfst: '#e8cf8a' };
 export function setScatterSeason(name: string) {
-  TUFT_MAT.color.set(SEASON_TINT[name] || '#ffffff');
-  flowersOn = name !== 'Winter';
+  setScatterLook(
+    new T3.Color(OLD_TINT[name] || '#ffffff'),
+    name === 'Winter' ? 1 : 0,
+    name === 'Winter' ? 0 : 1,
+  );
 }
 
 const placed = { x: 0, y: 0, r: -1, version: -1, age: -1 };
@@ -159,7 +183,8 @@ const _m = new T3.Matrix4(),
   _p = new T3.Vector3(),
   _s = new T3.Vector3(),
   _up = new T3.Vector3(0, 1, 0),
-  _c = new T3.Color();
+  _c = new T3.Color(),
+  _straw = new T3.Color();
 
 /** Elk beeldje: als de camera een eind verschoven of gezoomd is, het strooisel opnieuw neerzetten. */
 export function updateScatter() {
@@ -207,6 +232,7 @@ export function updateScatter() {
       for (const kind of ['tuft', 'flower', 'pebble']) {
         let want = per[kind] * thin * busy;
         if (kind === 'tuft' && t === TER.ROCK) want *= 0.3;
+        if (kind === 'flower') want *= flowerAmount;
         let k = 0;
         for (; want > 0; want--, k++) {
           if (want < 1 && hash2(x, y, 101 + k) > want) break;
@@ -230,6 +256,8 @@ export function updateScatter() {
             const grey = 0.55 + h2 * 0.35;
             _c.setRGB(grey * 1.02, grey * 0.98, grey * 0.92);
           }
+          // Winter: strogele plukjes (elk net iets anders), die uit de sneeuw steken
+          if (kind === 'tuft' && straw) _c.lerp(_straw.copy(STRAW).multiplyScalar(0.85 + h2 * 0.3), straw);
           if (locked) _c.multiplyScalar(0.55);
           m.setColorAt(n[kind], _c);
           n[kind]++;

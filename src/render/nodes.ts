@@ -11,6 +11,7 @@ import { TER, bmap, ground, node, ter } from '../world/world';
 import { settled } from '../game/rivals';
 import { groundHeight } from './terrain';
 import { camDist, isFar, s2t } from './camera';
+import { WIND_GUST, addSnow } from './weather';
 
 /** Eén onderdeel van een boom of rots: een vorm (al op zijn plek gezet) en het materiaal. */
 interface NodePart {
@@ -49,17 +50,32 @@ function lumpy(geo: T3.BufferGeometry, seed: number, amount = 0.3) {
   g.computeVertexNormals();
   return g;
 }
-// Bladeren wiegen zacht in de wind. Elke boom krijgt een eigen ritme (op basis van zijn plek),
-// en hoe hoger een stukje blad, hoe meer het beweegt. Onderin is het bladerdek donkerder
-// (daar komt minder licht), bovenin lichter: dat geeft de kruinen diepte.
+// Bladeren wiegen zacht in de wind, met af en toe een vlaag die over het land trekt. Elke boom krijgt een eigen
+// ritme (op basis van zijn plek), en hoe hoger een stukje blad, hoe meer het beweegt. Onderin is het bladerdek
+// donkerder (daar komt minder licht), bovenin lichter: dat geeft de kruinen diepte. In de winter ligt er sneeuw
+// op de bovenkant (minder dan op daken, zodat de zijkanten donker blijven en je de boom blijft zien), en in de
+// lente bloeit een deel van de eiken en berken.
 export const WIND = { value: 0 };
-function foliage(color: string, low = 0.25, high = 1.1): T3.MeshStandardMaterial {
+/** Hoeveel lentebloesem er op de eiken en berken staat (0..1); gezet door seasons.ts. */
+export const BLOSSOM = { value: 0 };
+/** Eén soort blad: van onder (low) naar boven (high) lichter, bloesem of niet, en vanaf hoe vlak er sneeuw ligt. */
+interface LeafLook {
+  low?: number;
+  high?: number;
+  blossom?: { value: number };
+  /** Sneeuw vanaf hoe vlak (0 = rechtop, 1 = vlak) tot helemaal; naaldbomen hebben steile kegels, dus lager. */
+  snow?: [number, number];
+}
+function foliage(color: string, look: LeafLook = {}): T3.MeshStandardMaterial {
+  const { low = 0.25, high = 1.1, blossom = { value: 0 }, snow = [0.6, 0.85] } = look;
   const m = new T3.MeshStandardMaterial({ color, flatShading: true, roughness: 0.88 });
   m.onBeforeCompile = shader => {
     shader.uniforms.uWind = WIND;
     shader.uniforms.uShadeRange = { value: new T3.Vector2(low, high) };
+    shader.uniforms.uBlossom = blossom;
+    shader.uniforms.uSnowMask = { value: new T3.Vector2(snow[0], snow[1]) };
     shader.vertexShader =
-      'uniform float uWind;\nvarying float vLeafY;\n' +
+      'uniform float uWind;\nvarying float vLeafY;\nvarying float vPick;\n' +
       shader.vertexShader.replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
@@ -69,28 +85,65 @@ function foliage(color: string, low = 0.25, high = 1.1): T3.MeshStandardMaterial
         #else
           vec3 ip = vec3(0.0);
         #endif
-        float sway = sin(uWind * 1.7 + ip.x * 0.7 + ip.z * 0.9) * 0.035 + sin(uWind * 3.3 + ip.x * 1.3) * 0.01;
+        // Een vast toevalsgetal per boom, uit zijn plek (welke bomen bloeien)
+        vPick = fract(sin(dot(ip.xz, vec2(12.9898, 78.233))) * 43758.5453);
+        float sway = (sin(uWind * 1.7 + ip.x * 0.7 + ip.z * 0.9) * 0.035 + sin(uWind * 3.3 + ip.x * 1.3) * 0.01) * ${WIND_GUST};
         transformed.x += sway * position.y * 1.4;
         transformed.z += sway * position.y * 0.6;`,
       );
     shader.fragmentShader =
-      'uniform vec2 uShadeRange;\nvarying float vLeafY;\n' +
-      shader.fragmentShader.replace(
-        '#include <color_fragment>',
-        `#include <color_fragment>
+      'uniform vec2 uShadeRange;\nuniform vec2 uSnowMask;\nuniform float uBlossom;\nvarying float vLeafY;\nvarying float vPick;\n' +
+      shader.fragmentShader
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
         diffuseColor.rgb *= mix(0.66, 1.08, smoothstep(uShadeRange.x, uShadeRange.y, vLeafY));`,
-      );
+        )
+        // Bloesem: bij ongeveer een derde van de bomen krijgt de bovenkant plekken roze-wit, in trossen (een
+        // golfpatroon over de plek in de wereld). In de wildernis (donkerder getekend) wat donkerder.
+        // (Na normal_fragment_maps: daar is bekend welke kant een vlakje op kijkt.)
+        .replace(
+          '#include <normal_fragment_maps>',
+          `#include <normal_fragment_maps>
+        if (uBlossom > 0.001) {
+          float bloomUp = inverseTransformDirection(normal, viewMatrix).y;
+          vec3 bloomPos = (vec4(-vViewPosition - viewMatrix[3].xyz, 0.0) * viewMatrix).xyz;
+          float bloomPatch = sin(bloomPos.x * 21.0 + sin(bloomPos.z * 16.0)) * sin(bloomPos.z * 19.0 + bloomPos.y * 13.0);
+          float bloom = uBlossom * step(vPick, 0.34) * smoothstep(0.3, 0.65, bloomUp) * smoothstep(-0.45, -0.05, bloomPatch);
+          vec3 bloomCol = mix(vec3(0.98, 0.82, 0.88), vec3(0.94, 0.6, 0.74), smoothstep(0.1, 0.7, bloomPatch));
+          #if defined( USE_COLOR )
+            bloomCol *= clamp(dot(vColor.rgb, vec3(0.3, 0.59, 0.11)) * 1.08, 0.6, 1.0);
+          #endif
+          diffuseColor.rgb = mix(diffuseColor.rgb, bloomCol, bloom * 0.9);
+        }`,
+        );
+    // Sneeuw alleen op de bovenkant; in de wildernis (donkerder getekend) wat grijzer. Waar hij begint is een
+    // uniform per soort (uSnowMask): zo delen alle bladsoorten één shader.
+    addSnow(shader, { lo: 'uSnowMask.x', hi: 'uSnowMask.y', max: 0.75, tint: 1.08 });
   };
   m.customProgramCacheKey = () => 'wind-leaf';
   return m;
 }
 export const FOL: Record<string, T3.MeshStandardMaterial> = {
-  pine: foliage('#3f6b3f'),
-  pine2: foliage('#4a7a45'),
-  birch: foliage('#8fbf5a', 0.5, 1.3),
-  oak: foliage('#4f8a3c', 0.35, 1.15),
-  bush: foliage('#4d7d38', 0.0, 0.32),
+  pine: foliage('#3f6b3f', { snow: [0.32, 0.62] }),
+  pine2: foliage('#4a7a45', { snow: [0.32, 0.62] }),
+  birch: foliage('#8fbf5a', { low: 0.5, high: 1.3, blossom: BLOSSOM, snow: [0.5, 0.8] }),
+  oak: foliage('#4f8a3c', { low: 0.35, high: 1.15, blossom: BLOSSOM, snow: [0.5, 0.8] }),
+  bush: foliage('#4d7d38', { low: 0.0, high: 0.32, snow: [0.5, 0.8] }),
 };
+// Stenen (rotsen, steenkool, de voet van ertsen en de losse rotsen op de bergen) krijgen in de winter sneeuw op de
+// bovenkant. Elk een eigen kopie van het materiaal: het gedeelde materiaal uit mat() gebruiken ook gebouwen en
+// figuren, en die moeten schoon blijven. (De kristallen van ertsen en de bessen houden wel het gewone materiaal.)
+const SNOWY: Record<string, T3.Material> = {};
+function snowyStone(c: string, crag = false): T3.Material {
+  const key = c + (crag ? '|crag' : '');
+  if (SNOWY[key]) return SNOWY[key];
+  const m = mat(c).clone();
+  // Losse bergrotsen hebben de kleur van de berg zelf (grijs) als kleur per rots: daar telt die kleur sterker mee
+  m.onBeforeCompile = shader => addSnow(shader, { lo: 0.45, hi: 0.75, max: 0.85, tint: crag ? 2.2 : 1.08 });
+  m.customProgramCacheKey = () => (crag ? 'tp-crag-snow' : 'tp-stone-snow');
+  return (SNOWY[key] = m);
+}
 const STARGLOW = mat('#b49cff', { e: '#8a5cff', ei: 0.9 });
 // Kruinen en stenen met deuken (een paar varianten, steeds hergebruikt)
 const BLOB = [lumpy(gIco(0), 1, 0.28), lumpy(gIco(0), 2, 0.28), lumpy(gIco(0), 3, 0.32)];
@@ -141,14 +194,14 @@ const NVAR: Record<string, NodePart[]> = {
   ],
   // Rotsblok: een grote steen met twee kleinere ernaast
   rock: [
-    bakePart(STONE[0], '#9a9c92', 0, 0.1, 0, 0.3, 0.22, 0.28),
-    bakePart(STONE[1], '#8c8e85', 0.24, 0.04, 0.12, 0.13, 0.1, 0.12),
-    bakePart(STONE[2], '#a5a69c', -0.18, 0.03, 0.2, 0.09, 0.07, 0.09),
+    bakePart(STONE[0], snowyStone('#9a9c92'), 0, 0.1, 0, 0.3, 0.22, 0.28),
+    bakePart(STONE[1], snowyStone('#8c8e85'), 0.24, 0.04, 0.12, 0.13, 0.1, 0.12),
+    bakePart(STONE[2], snowyStone('#a5a69c'), -0.18, 0.03, 0.2, 0.09, 0.07, 0.09),
   ],
   coal: [
-    bakePart(STONE[0], '#3e4146', 0, 0.1, 0, 0.32, 0.24, 0.3),
-    bakePart(STONE[1], '#2a2c30', 0.18, 0.06, 0.12, 0.14, 0.12, 0.14),
-    bakePart(STONE[2], '#33363b', -0.2, 0.04, 0.1, 0.1, 0.08, 0.1),
+    bakePart(STONE[0], snowyStone('#3e4146'), 0, 0.1, 0, 0.32, 0.24, 0.3),
+    bakePart(STONE[1], snowyStone('#2a2c30'), 0.18, 0.06, 0.12, 0.14, 0.12, 0.14),
+    bakePart(STONE[2], snowyStone('#33363b'), -0.2, 0.04, 0.1, 0.1, 0.08, 0.1),
   ],
   oil: [
     bakePart(gCyl(0.4, 0.4, 10), '#1c1820', 0, 0, 0, 1, 0.025, 1),
@@ -166,8 +219,17 @@ const NVAR: Record<string, NodePart[]> = {
 };
 for (const k of ['copper', 'tin', 'iron', 'gold', 'lithium'])
   NVAR[k] = [
-    bakePart(STONE[0], k === 'lithium' ? '#d9dcd6' : '#7b7d78', 0, 0.1, 0, 0.3, 0.22, 0.28),
-    bakePart(STONE[1], k === 'lithium' ? '#c9ccc6' : '#6c6e69', 0.22, 0.04, 0.14, 0.12, 0.1, 0.12),
+    bakePart(STONE[0], snowyStone(k === 'lithium' ? '#d9dcd6' : '#7b7d78'), 0, 0.1, 0, 0.3, 0.22, 0.28),
+    bakePart(
+      STONE[1],
+      snowyStone(k === 'lithium' ? '#c9ccc6' : '#6c6e69'),
+      0.22,
+      0.04,
+      0.14,
+      0.12,
+      0.1,
+      0.12,
+    ),
     bakePart(gOct(), RES[k].c, 0.05, 0.3, 0, 0.1, 0.18, 0.1),
     bakePart(gOct(), RES[k].c, -0.12, 0.22, 0.08, 0.07, 0.12, 0.07),
     bakePart(gOct(), RES[k].c, 0.16, 0.14, -0.1, 0.05, 0.09, 0.05),
@@ -228,8 +290,8 @@ const NEAR_DETAIL: Record<string, NodePart[]> = {
     bakePart(gIco(0), '#d4483e', 0.16, 0.26, -0.04, 0.035, 0.035, 0.035),
   ],
   rock: [
-    bakePart(STONE[1], '#a0a298', 0.12, 0.02, -0.22, 0.07, 0.05, 0.07),
-    bakePart(STONE[2], '#8c8e85', -0.26, 0.02, -0.08, 0.08, 0.06, 0.08),
+    bakePart(STONE[1], snowyStone('#a0a298'), 0.12, 0.02, -0.22, 0.07, 0.05, 0.07),
+    bakePart(STONE[2], snowyStone('#8c8e85'), -0.26, 0.02, -0.08, 0.08, 0.06, 0.08),
   ],
 };
 for (const k in NEAR_DETAIL) {
@@ -244,7 +306,7 @@ for (const k in NEAR_DETAIL) {
 const CRAG_MAX = 4000;
 const CRAG_SHAPES = [lumpy(gIco(0), 7, 0.4), lumpy(gIco(0), 8, 0.45), lumpy(gIco(0), 9, 0.35)];
 const CRAGS = CRAG_SHAPES.map(geo => {
-  const m = new T3.InstancedMesh(geo, mat('#ffffff'), CRAG_MAX);
+  const m = new T3.InstancedMesh(geo, snowyStone('#ffffff', true), CRAG_MAX);
   m.count = 0;
   m.receiveShadow = true;
   m.castShadow = false;
