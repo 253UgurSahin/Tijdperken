@@ -14,6 +14,7 @@ import { startFinale } from './finale';
 import { playerWonderDone } from './wonders';
 import { toast } from '../ui/hud';
 import { clamp } from '../util/math';
+import { charmTip } from './charm';
 import { bmap, node, setBlk } from '../world/world';
 
 export function placeBuilding(type: string, x: number, y: number, instant?: boolean): Building {
@@ -65,6 +66,7 @@ export function completeBuilding(b: Building, silent?: boolean) {
   b.pop_t = G.t;
   if (d.wall) G.stats.walls++; // voor de prestatie "win zonder muren"
   if (!silent) {
+    charmTip(b); // één keer uitleg over sfeer (zie game/charm.ts)
     store.notePos = [b.x + d.size / 2, b.y + d.size / 2];
     if (!d.wonder) toast(d.n + ' is klaar'); // een wonder krijgt een eigen melding, hieronder
     fxRing(b.x + d.size / 2, b.y + d.size / 2, '#ffffff');

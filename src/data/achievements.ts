@@ -461,11 +461,11 @@ export function newAchievements(facts: AchievementFacts, have: AchievedMap = {})
 
 /**
  * Gebouwen die je zelf kunt neerzetten, per tijdperk (zonder het stamhuis en paden).
- * Wereldwonderen tellen niet mee: een rivaal kan je er een afpakken.
+ * Wereldwonderen tellen niet mee: een rivaal kan je er een afpakken. Versiering (Sfeer) ook niet: die is extra.
  */
 export const AGE_BUILDINGS: string[][] = [];
 for (const [k, d] of Object.entries(B)) {
-  if (d.nobuild || d.road || d.wonder) continue;
+  if (d.nobuild || d.road || d.wonder || d.cat === 'deco') continue;
   (AGE_BUILDINGS[d.age] = AGE_BUILDINGS[d.age] || []).push(k);
 }
 

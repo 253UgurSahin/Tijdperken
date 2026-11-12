@@ -269,6 +269,127 @@ const MODELS: Record<string, ModelFn> = {
       cy(g, 0.03, 0.18, C.woodd, 0.3, 0.03 + k * 0.05, -0.15 + k * 0.02, 5).rotation.x = Math.PI / 2;
     cy(g, 0.02, 0.12, C.woodd, 0, 0.92, 0, 4);
   },
+  // ---- Sfeer: versiering (zie data/charm.ts) ----
+  flowerbed(g) {
+    cy(g, 0.4, 0.08, '#6e5236', 0, 0, 0, 10); // aarde
+    cy(g, 0.42, 0.05, '#8a7a62', 0, 0, 0, 10, 0.42); // rand van steentjes
+    const colours = ['#e2574c', '#f2c94c', '#f4f1e8', '#c46bd1', '#e2574c', '#f2c94c', '#f4f1e8'];
+    for (let k = 0; k < 7; k++) {
+      const a = (k / 7) * TAU,
+        r = k % 2 ? 0.26 : 0.14;
+      cy(g, 0.012, 0.16, '#4f7a34', Math.cos(a) * r, 0.06, Math.sin(a) * r, 4);
+      sp(g, 0.05, colours[k], Math.cos(a) * r, 0.23, Math.sin(a) * r);
+    }
+    sp(g, 0.08, '#5f8f3a', 0, 0.1, 0, 0, 0.7); // struikje in het midden
+  },
+  totem(g) {
+    cy(g, 0.2, 0.06, C.stoned, 0, 0, 0, 8);
+    const faces = ['#a5523e', '#c08a3e', '#5f8f8a'];
+    for (let k = 0; k < 3; k++) {
+      cy(g, 0.13, 0.36, C.wood, 0, 0.06 + k * 0.36, 0, 8);
+      bx(g, 0.2, 0.08, 0.04, faces[k], 0, 0.22 + k * 0.36, 0.12); // geschilderde mond
+      sp(g, 0.035, '#f4ecda', -0.05, 0.31 + k * 0.36, 0.12); // ogen
+      sp(g, 0.035, '#f4ecda', 0.05, 0.31 + k * 0.36, 0.12);
+    }
+    bx(g, 0.62, 0.06, 0.12, '#c08a3e', 0, 1.02, 0); // vleugels bovenop
+    cn(g, 0.12, 0.2, '#a5523e', 0, 1.14, 0, 6);
+  },
+  well(g) {
+    cy(g, 0.32, 0.34, C.stone, 0, 0, 0, 10);
+    cy(g, 0.25, 0.02, '#3b6f8f', 0, 0.3, 0, 10); // water
+    cy(g, 0.34, 0.05, C.stoned, 0, 0.32, 0, 10);
+    bx(g, 0.05, 0.5, 0.05, C.woodd, -0.27, 0.34, 0);
+    bx(g, 0.05, 0.5, 0.05, C.woodd, 0.27, 0.34, 0);
+    cy(g, 0.035, 0.6, C.wood, -0.3, 0.74, 0, 6).rotation.z = Math.PI / 2; // as om het touw op te winden
+    gr(g, 0.74, 0.22, 0.5, C.thatch, 0, 0.86, 0); // dakje
+    cy(g, 0.07, 0.1, '#8a6a44', 0.12, 0.5, 0, 8); // emmer
+  },
+  statue(g) {
+    bx(g, 0.62, 0.12, 0.62, C.stoned);
+    bx(g, 0.46, 0.42, 0.46, C.stone, 0, 0.12, 0); // sokkel
+    bx(g, 0.52, 0.06, 0.52, C.stoned, 0, 0.54, 0);
+    cy(g, 0.11, 0.42, C.bronze, 0, 0.6, 0, 8, 0.08); // lijf
+    sp(g, 0.08, C.bronze, 0, 1.1, 0); // hoofd
+    cy(g, 0.03, 0.46, C.bronze, 0.14, 0.82, 0, 5).rotation.z = -0.7; // arm met speer omhoog
+    cy(g, 0.015, 0.7, '#7a5a36', 0.3, 0.8, 0, 4);
+    bx(g, 0.2, 0.06, 0.02, '#e0b240', 0, 0.3, 0.235); // naambordje
+  },
+  fountain(g) {
+    cy(g, 0.46, 0.16, C.stone, 0, 0, 0, 14);
+    cy(g, 0.4, 0.03, '#4f8fb3', 0, 0.14, 0, 14); // water in het bassin
+    cy(g, 0.08, 0.5, C.stoned, 0, 0.14, 0, 8);
+    cy(g, 0.2, 0.06, C.stone, 0, 0.6, 0, 10, 0.24); // schaal
+    cy(g, 0.16, 0.02, '#6fb3d9', 0, 0.65, 0, 10);
+    cy(g, 0.03, 0.22, '#a9d6ee', 0, 0.66, 0, 6); // straal
+    sp(g, 0.06, '#d4ecf7', 0, 0.9, 0);
+    for (let k = 0; k < 4; k++) {
+      const a = (k / 4) * TAU + 0.4;
+      sp(g, 0.03, '#a9d6ee', Math.cos(a) * 0.16, 0.42, Math.sin(a) * 0.16); // spetters
+    }
+  },
+  tulips(g) {
+    bx(g, 1.9, 0.04, 1.9, '#5a4128');
+    const rows = ['#e2463c', '#f2c94c', '#e2463c', '#f4f1e8', '#c46bd1', '#f2c94c'];
+    rows.forEach((c, r) => {
+      const z = -0.75 + r * 0.3;
+      bx(g, 1.8, 0.05, 0.16, '#4f7a34', 0, 0.04, z); // groene rij
+      for (let k = 0; k < 7; k++) sp(g, 0.05, c, -0.75 + k * 0.25, 0.14, z, 0, 1.4);
+    });
+    bx(g, 0.04, 0.4, 0.04, C.woodd, 0.92, 0, 0.92); // bordje met de naam van de kweker
+    bx(g, 0.24, 0.14, 0.02, '#f4ecda', 0.92, 0.3, 0.93);
+  },
+  bandstand(g) {
+    cy(g, 0.46, 0.14, C.stone, 0, 0, 0, 8);
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * TAU;
+      cy(g, 0.025, 0.56, C.white, Math.cos(a) * 0.4, 0.14, Math.sin(a) * 0.4, 5);
+    }
+    cn(g, 0.52, 0.36, '#3f7a5a', 0, 0.7, 0, 8); // groen koperen dak
+    cy(g, 0.52, 0.04, C.white, 0, 0.68, 0, 8);
+    sp(g, 0.05, '#e0b240', 0, 1.08, 0);
+    cy(g, 0.07, 0.16, '#e0b240', 0.12, 0.14, 0.05, 8); // trommel en tuba
+    cy(g, 0.05, 0.2, '#c9a23a', -0.14, 0.14, -0.06, 6);
+  },
+  park(g) {
+    bx(g, 1.94, 0.04, 1.94, '#6f9a45');
+    cy(g, 0.42, 0.03, '#4f8fb3', 0.35, 0.04, 0.35, 14); // vijver
+    bx(g, 1.9, 0.045, 0.16, '#c9b48a', 0, 0.01, -0.3, 0.6); // grindpad
+    for (const [x, z, h] of [
+      [-0.6, -0.65, 0.55],
+      [-0.7, 0.3, 0.45],
+      [0.55, -0.6, 0.5],
+    ] as [number, number, number][]) {
+      cy(g, 0.05, h, C.woodd, x, 0.04, z, 6);
+      sp(g, 0.28, '#4f8a3a', x, h + 0.12, z, 1);
+    }
+    bx(g, 0.36, 0.06, 0.12, C.wood, -0.15, 0.16, 0.6); // bankje
+    bx(g, 0.03, 0.14, 0.1, C.dmetal, -0.3, 0.04, 0.6);
+    bx(g, 0.03, 0.14, 0.1, C.dmetal, 0, 0.04, 0.6);
+    for (let k = 0; k < 5; k++) sp(g, 0.04, k % 2 ? '#f2c94c' : '#e2574c', -0.85 + k * 0.1, 0.07, 0.85);
+  },
+  hologram(g) {
+    cy(g, 0.42, 0.12, C.concrete, 0, 0, 0, 12);
+    cy(g, 0.36, 0.02, '#3fa7c9', 0, 0.11, 0, 12);
+    cy(g, 0.08, 0.3, C.dmetal, 0, 0.12, 0, 8);
+    const ring = cy(g, 0.26, 0.03, CYANM, 0, 0.6, 0, 16);
+    ring.userData.spin = 1;
+    sp(g, 0.14, CYANM, 0, 0.84, 0, 1); // lichtbol
+    cy(g, 0.02, 0.5, CYANM, 0, 0.42, 0, 4);
+  },
+  stargarden(g) {
+    bx(g, 1.9, 0.08, 1.9, C.concrete);
+    cy(g, 0.85, 0.06, VIOLETM, 0, 0.08, 0, 16); // gloeiende rand
+    sp(g, 0.82, GLASS, 0, 0.12, 0, 1, 0.75); // glazen koepel
+    for (const [x, z, c] of [
+      [-0.3, -0.2, '#5bd6a8'],
+      [0.25, 0.2, '#ff8ad8'],
+      [0.1, -0.35, '#9b7bff'],
+    ] as [number, number, string][]) {
+      cy(g, 0.04, 0.3, '#3b5a4a', x, 0.12, z, 5);
+      sp(g, 0.14, c, x, 0.48, z, 1);
+    }
+    sp(g, 0.06, PINKM, 0, 0.75, 0);
+  },
   campfire(g) {
     for (let k = 0; k < 7; k++) {
       const a = (k / 7) * TAU;

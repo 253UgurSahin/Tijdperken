@@ -10,6 +10,7 @@ import { has, pay } from './economy';
 import { hasRule } from './mods';
 import { floater, fxRing } from './fx';
 import { G } from './state';
+import { tierOf } from './charm';
 import { toast } from '../ui/hud';
 
 /** Eén regel van een verbetering: [naam, nu, straks]. */
@@ -59,10 +60,20 @@ const ageHp = (b: Building): number => (b.type === 'townhall' && G ? (1 + 0.3 * 
 const towerHp = (b: Building): number => (B[b.type].def && b.type !== 'townhall' ? mul('tower.hp') : 1);
 export const bMaxHp = (b: Building, l = lvlOf(b)): number =>
   B[b.type].hp * ageHp(b) * (1 + 0.35 * l) * mul('bld.hp') * towerHp(b);
-export const bPop = (b: Building): number => {
-  const p = B[b.type].pop;
-  return p ? Math.round(p * (1 + 0.4 * lvlOf(b))) : 0;
-};
+/** Plek voor inwoners zonder de sfeer: groeit met het niveau. */
+const basePop = (b: Building, l = lvlOf(b)): number => Math.round((B[b.type].pop || 0) * (1 + 0.4 * l));
+/**
+ * Hoeveel inwoners de sfeer erbij geeft (of afhaalt) bij dit huis (zie game/charm.ts). Altijd minstens één,
+ * zodat het ook bij een kleine hut te merken is.
+ */
+export function charmPopBonus(b: Building, l = lvlOf(b)): number {
+  const change = tierOf(b).popMul - 1;
+  if (!change || !B[b.type].pop) return 0;
+  return Math.sign(change) * Math.max(1, Math.round(basePop(b, l) * Math.abs(change)));
+}
+/** Plek voor inwoners: groeit met het niveau, en met de sfeer in de buurt. */
+export const bPop = (b: Building, l = lvlOf(b)): number =>
+  B[b.type].pop ? basePop(b, l) + charmPopBonus(b, l) : 0;
 export const bLight = (b: Building): number => {
   const l = B[b.type].light;
   return l ? l + lvlOf(b) + add('light') : 0;
@@ -100,7 +111,7 @@ export function upgradeRows(b: Building): UpgradeRow[] {
     l = lvlOf(b),
     n = l + 1,
     rows: UpgradeRow[] = [];
-  if (d.pop) rows.push(['Inwoners', Math.round(d.pop * (1 + 0.4 * l)), Math.round(d.pop * (1 + 0.4 * n))]);
+  if (d.pop) rows.push(['Inwoners', bPop(b, l), bPop(b, n)]);
   if (d.def) {
     rows.push(['Schade per schot', Math.round(towerDamage(b, l)), Math.round(towerDamage(b, n))]);
     rows.push(['Bereik', dec(towerRange(b, l)), dec(towerRange(b, n))]);

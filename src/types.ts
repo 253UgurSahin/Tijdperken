@@ -79,6 +79,13 @@ export interface BuildingDef {
   road?: 1;
   /** Geluid bij het werk (zie audio/sound.ts). */
   snd?: string;
+  /**
+   * Sfeer voor huizen in de buurt (zie data/charm.ts): versiering geeft plus (v > 0), lawaai en rook van een
+   * fabriek min (v < 0). `r` is het bereik in tegels.
+   */
+  charm?: { v: number; r: number };
+  /** Hulp voor akkers in de buurt: `farm` = zoveel sneller oogsten (0,2 = 20%), binnen `r` tegels. */
+  aura?: { farm: number; r: number };
   // Alleen bij wereldwonderen (zie data/wonders.ts):
   wonder?: boolean;
   /** Lidwoord ('de' of 'het'), en of de naam meervoud is. */

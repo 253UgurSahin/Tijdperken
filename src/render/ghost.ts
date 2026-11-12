@@ -2,6 +2,7 @@
 import * as T3 from 'three';
 import { store } from '../core/store';
 import { B } from '../data/buildings';
+import { charmFrom, farmBoostOf } from '../data/charm';
 import { canPlace, ghostPos, lineTiles } from '../game/placement';
 import { G } from '../game/state';
 import { drag, mouse } from '../input/input';
@@ -76,4 +77,28 @@ export function drawPlacement() {
     for (let dx = 0; dx < s; dx++)
       quadAt(gx + dx + 0.5, gy + dy + 0.5, 0.94, 0.94, err ? '#e5584a' : '#59d27a', 0.5);
   if (d.def || d.light) rangeAt(gx + s / 2, gy + s / 2, d.def ? d.def.r : d.light!, '#ffffff');
+  showNeighbours(store.placing, gx, gy);
+}
+
+/**
+ * Versiering, fabrieken en waterputten raken hun buren (zie data/charm.ts). Bij het plaatsen zie je het bereik
+ * en welke huizen (roze: gezelliger, grijs: somberder) of akkers (groen: sneller) er iets van merken.
+ */
+function showNeighbours(type: string, gx: number, gy: number) {
+  const d = B[type];
+  if (!d.charm && !d.aura) return;
+  const s = d.size,
+    here = { type, x: gx, y: gy };
+  const r = d.charm ? d.charm.r : d.aura!.r;
+  rangeAt(gx + s / 2, gy + s / 2, r, d.charm && d.charm.v < 0 ? '#8a8f99' : '#f08ab0');
+  for (const b of G.bs) {
+    if (!b.done) continue;
+    const bd = B[b.type];
+    let col = '';
+    if (bd.pop && charmFrom(B, here, b) !== 0) col = d.charm!.v > 0 ? '#f08ab0' : '#6b6f78';
+    else if (bd.work && d.aura && farmBoostOf(B, b, [here]) > 1) col = '#7fd65a';
+    if (!col) continue;
+    for (let dy = 0; dy < bd.size; dy++)
+      for (let dx = 0; dx < bd.size; dx++) quadAt(b.x + dx + 0.5, b.y + dy + 0.5, 0.9, 0.9, col, 0.45);
+  }
 }

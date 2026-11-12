@@ -1137,3 +1137,20 @@ body.v2 #bigMap #mapBig {
   font-size: 12px;
   font-weight: 500;
 }
+/* Sfeer van een huis (zie game/charm.ts): roze bij gezellig, goud bij prachtig, grijs bij somber */
+.statline.charm {
+  --charm: #c0577a;
+}
+.statline.charm.lovely {
+  --charm: #c08a3e;
+}
+.statline.charm.plain {
+  --charm: var(--ink-4);
+}
+.statline.charm.grim {
+  --charm: #6b6f78;
+}
+.statline.charm .dot {
+  background: var(--charm);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--charm) 22%, transparent);
+}

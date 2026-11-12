@@ -21,6 +21,7 @@ import {
   armsMul,
   bMaxHp,
   bPop,
+  charmPopBonus,
   lvlOf,
   marketPrices,
   maxLvl,
@@ -54,6 +55,37 @@ import { clamp, dist } from '../util/math';
 import { amt, bmap, isUnl, node, setBlk } from '../world/world';
 import { canMake, fitsPeople } from '../data/succession';
 import { isNight } from '../game/time';
+import { charmOf, farmBoostFor, tierOf } from '../game/charm';
+import { charmFrom } from '../data/charm';
+import { charmText } from './buildmenu';
+
+/**
+ * Wat de sfeer met dit gebouw doet: bij een huis hoe gezellig het is, bij versiering of een fabriek hoeveel
+ * huizen het raakt, bij een akker of er een waterput of molen helpt. Leeg als het er niets mee te maken heeft.
+ */
+function charmLine(b: Building): string {
+  if (!b.done) return '';
+  const d = B[b.type];
+  if (d.pop) {
+    const tier = tierOf(b),
+      v = charmOf(b),
+      extra = charmPopBonus(b),
+      effect = extra
+        ? ` · ${extra > 0 ? '+' : '−'}${Math.abs(extra)} ${Math.abs(extra) === 1 ? 'inwoner' : 'inwoners'}`
+        : '';
+    return `<div class="statline charm ${tier.k}"><i class="dot"></i>Sfeer: ${tier.n} (${v > 0 ? '+' : ''}${v})${effect}</div>`;
+  }
+  if (d.work) {
+    const boost = Math.round((farmBoostFor(b) - 1) * 100);
+    return boost
+      ? `<div class="statline charm cosy"><i class="dot"></i>Hulp uit de buurt: +${boost}% oogst</div>`
+      : '';
+  }
+  if (!d.charm) return '';
+  const homes = G.bs.filter(h => h.done && B[h.type].pop && charmFrom(B, b, h) !== 0).length;
+  const who = homes === 1 ? '1 huis' : `${homes} huizen`;
+  return `<div class="statline charm ${d.charm.v > 0 ? 'cosy' : 'grim'}"><i class="dot"></i>${charmText(b.type)} · raakt ${who}</div>`;
+}
 import { canDemolish, noDemolishText, ownerLine, refreshWonders, wonderStatus } from '../game/wonders';
 
 // Selectiepaneel
@@ -427,6 +459,7 @@ export function renderInspector() {
         h += `<div class="statline ${why ? (calm ? 'idle' : 'warn') : ''}"><i class="dot"></i>${esc(why || busy)}</div>`;
     }
     if (d.pop) h += `<div class="stats"><span><i>${ico('⌂')}</i>${bPop(b)} inwoners</span></div>`;
+    h += charmLine(b);
     if (d.def)
       h += `<div class="stats"><span><i>${ico('⚔')}</i>${Math.round(towerDamage(b))} schade</span><span><i>${ico('◎')}</i>bereik ${fmtDec(towerRange(b))}</span></div>`;
     if (UPG_OK(b.type)) {

@@ -16,7 +16,7 @@ import { mouse } from '../input/input';
 import { clearSel } from '../input/selection';
 import { iconFor } from '../render/icons';
 import { VW, worldEl } from '../render/scene';
-import { costHTML, esc, hy, theAge } from './format';
+import { costHTML, esc, fmtDec, hy, theAge } from './format';
 import { setHTML, sigs } from './header';
 import { toast } from './hud';
 import { insHandler, selCmds, selCtx } from './inspector';
@@ -42,6 +42,8 @@ export function bShort(k: string): string {
   if (d.road) return 'Sneller lopen · sleep om aan te leggen';
   if (d.wall) return d.gate ? 'Eigen volk door, vijand niet' : `Muur · ${d.hp} leven · sleep een lijn`;
   if (d.pop) return `+${d.pop} inwoners`;
+  // Versiering: sfeer voor huizen in de buurt, en soms hulp voor akkers
+  if (d.cat === 'deco') return charmText(k);
   // Een molen heeft niets nodig: die maakt vanzelf iets
   if (d.conv && !Object.keys(d.conv.in).length)
     return 'Maakt vanzelf ' + Object.keys(d.conv.out).map(r => RES[r].n.toLowerCase());
@@ -88,13 +90,33 @@ export function bShort(k: string): string {
       : 'Winnen hiermee staat uit in deze wereld';
   return '';
 }
-function bDesc(k: string): string {
-  const d = B[k];
-  return (d.desc ? d.desc + ' ' : '') + bShort(k) + (d.power ? ` · verbruikt ${d.power} stroom` : '');
+/** "+3 sfeer binnen 3,5 tegels · akkers +20%": wat een gebouw voor de buurt doet (leeg als niets). */
+export function charmText(k: string): string {
+  const d = B[k],
+    parts: string[] = [];
+  if (d.charm)
+    parts.push(`${d.charm.v > 0 ? '+' : '−'}${Math.abs(d.charm.v)} sfeer binnen ${fmtDec(d.charm.r)} tegels`);
+  if (d.aura) parts.push(`akkers +${Math.round(d.aura.farm * 100)}%`);
+  return parts.join(' · ');
 }
-const CATKEY: Record<string, string> = { home: 'Z', eco: 'X', light: 'C', mil: 'B', wonder: 'N' };
+function bDesc(k: string): string {
+  const d = B[k],
+    // Fabrieken en wonderen vertellen ook wat ze met de sfeer doen (versiering zegt dat al in bShort)
+    around = d.cat !== 'deco' && (d.charm || d.aura) ? ` · ${charmText(k)}` : '';
+  return (
+    (d.desc ? d.desc + ' ' : '') + bShort(k) + around + (d.power ? ` · verbruikt ${d.power} stroom` : '')
+  );
+}
+const CATKEY: Record<string, string> = { home: 'Z', eco: 'X', light: 'C', mil: 'B', deco: 'G', wonder: 'N' };
 /** Het pictogram van elke bouwcategorie. Op een telefoon staat de naam alleen bij de gekozen categorie. */
-const CAT_ICON: Record<string, string> = { home: '⌂', eco: '⚙', light: '✹', mil: '⚔', wonder: '★' };
+const CAT_ICON: Record<string, string> = {
+  home: '⌂',
+  eco: '⚙',
+  light: '✹',
+  mil: '⚔',
+  deco: '⚘',
+  wonder: '★',
+};
 function renderCats() {
   const hc = store.coachTile && B[store.coachTile].cat;
   setHTML(

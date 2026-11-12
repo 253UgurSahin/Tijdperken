@@ -16,6 +16,7 @@ import { mul } from './bonus';
 import { bMaxHp, carryMax, farmSlots } from './upgrades';
 import { clamp, dist } from '../util/math';
 import { findPath, follow } from '../world/pathfinding';
+import { farmBoostFor } from './charm';
 import { amt, claims, isUnl, node, nodeLists, unreach, walkable } from '../world/world';
 
 function nearestDrop(x: number, y: number): Building | null {
@@ -394,7 +395,7 @@ function doGather(v: Villager, dt: number) {
     resourceBonus(v.res!) *
     (G.rain && t.k === 'node' ? 0.9 : 1) *
     (t.k === 'farm' ? mul('farm') : 1) *
-    (t.k === 'farm' ? mul('farm.plow') : 1) *
+    (t.k === 'farm' ? mul('farm.plow') * farmBoostFor(t.b) : 1) * // een waterput of molen in de buurt helpt
     mul('gather.all'); // ook tijdelijke bonussen uit gebeurtenissen, zoals een oogstfeest
   while (v.timer >= 1) {
     v.timer -= 1;

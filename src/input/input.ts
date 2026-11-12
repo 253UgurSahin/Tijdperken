@@ -436,8 +436,8 @@ addEventListener('keydown', e => {
   // Draaien met , en . (zie main.ts); in het bovenaanzicht gaat eerst het 3D-aanzicht aan
   else if ((k === ',' || k === '.') && store.V2) setView(false);
   else if (k === 'm') setSound(!sndOn);
-  else if (k === 'z' || k === 'x' || k === 'c' || k === 'b' || k === 'n') {
-    const t = { z: 'home', x: 'eco', c: 'light', b: 'mil', n: 'wonder' }[k];
+  else if (k === 'z' || k === 'x' || k === 'c' || k === 'b' || k === 'g' || k === 'n') {
+    const t = { z: 'home', x: 'eco', c: 'light', b: 'mil', g: 'deco', n: 'wonder' }[k];
     if (selCmds != null && !sel.vs.size) clearSel();
     setTab(t);
   } else if (k === 'p') {
