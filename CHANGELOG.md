@@ -3,6 +3,14 @@
 Alle wijzigingen uit de "wereldwijde hit"-ronde (analyse → bugfixes → techniek → gameplay → polish), in gewone
 taal. Per bug: wat er misging, hoe het is opgelost en hoe dat is gecontroleerd. Nieuwste bovenaan.
 
+## Versie 0.6.0 (november 2026)
+
+- **Strak ontwerp:** de hele interface in één ontwerpsysteem, passend bij het nieuwe hoofdmenu. Donkere, licht
+  doorschijnende panelen met dunne randen en weinig afronding; geen harde schaduwen, plakband, golflijnen of
+  papierkorrel meer. Eén strakke letter met even brede cijfers (de sierletter alleen voor logo en titels), geen
+  schuine tekst, kleine kopjes in hoofdletters. De onderbalk is lager, en op een breed scherm zie je tussen de
+  selectie en het bouwpaneel gewoon de wereld. De kleur van het tijdperk blijft het enige accent.
+
 ## Versie 0.5.0 (november 2026)
 
 - **Nieuw hoofdmenu in game-stijl:** de wereld over het hele scherm, links een groot logo en één lijst met keuzes
