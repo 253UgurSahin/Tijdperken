@@ -11,6 +11,8 @@ import { resetV } from '../../input/selection';
 import { costHTML, gem } from '../format';
 import { setHTML, sigs } from '../header';
 import { CB } from '../inspector';
+import { charmSummary } from '../../game/charm';
+import { CHARM_TIERS } from '../../data/charm';
 import { $ } from '../../util/dom';
 
 // Staan de vaste taken open? null = nog niet aangeklikt: dan open zodra iemand een vaste taak heeft.
@@ -37,6 +39,7 @@ export function renderJobs() {
     inside,
     Object.keys(avail).join(),
     open,
+    charmSummary(),
   ]);
   const adv = G.age >= 1 || G.vs.length >= 12;
   // Eén regel per taak: wie er nu op staan, met min en plus
@@ -61,8 +64,34 @@ export function renderJobs() {
         : '<p class="why" style="margin:6px 0 0">Je dorpelingen kiezen zelf het werk dat het hardst nodig is.</p>'
     }
     <div class="cmd" style="margin-top:10px">${CB('data-act="train"', '☺', 'Trainen', { dis: !(popNow() < popCap() && G.res.food >= trainCost()), cost: costHTML({ food: trainCost() }, true), tip: 'Train een dorpeling in het stamhuis' })}${adv ? CB('data-act="idle"', '☉', 'Zonder werk', { tip: 'Selecteer wie niets doet' }) + CB('data-act="auto"', '↻', G.autoTrain ? 'Vanzelf trainen: aan' : 'Vanzelf trainen: uit', { on: G.autoTrain, tip: 'Het stamhuis traint vanzelf dorpelingen als er voedsel en plek is' }) : ''}</div>
-    <div class="statline ${popNow() >= popCap() && G.bs.some(b => b.type !== 'townhall' && B[b.type].pop && b.done) ? 'warn' : ''}"><i class="dot"></i>${popNow() >= popCap() ? (G.bs.some(b => b.type !== 'townhall' && B[b.type].pop) ? 'Vol: bouw meer woningen' : 'Bouw een hut voor meer inwoners') : G.training ? `Traint${G.trainQ ? ` · ${G.trainQ} in wachtrij` : ''}` : `${inside ? inside + ' binnen · ' : ''}${G.vs.filter(v => !v.hidden && v.state === 'idle').length} stilstaand`}</div>`,
+    <div class="statline ${popNow() >= popCap() && G.bs.some(b => b.type !== 'townhall' && B[b.type].pop && b.done) ? 'warn' : ''}"><i class="dot"></i>${popNow() >= popCap() ? (G.bs.some(b => b.type !== 'townhall' && B[b.type].pop) ? 'Vol: bouw meer woningen' : 'Bouw een hut voor meer inwoners') : G.training ? `Traint${G.trainQ ? ` · ${G.trainQ} in wachtrij` : ''}` : `${inside ? inside + ' binnen · ' : ''}${G.vs.filter(v => !v.hidden && v.state === 'idle').length} stilstaand`}</div>${charmBar()}`,
   );
+}
+
+/**
+ * Hoe gezellig je huizen zijn, als een gekleurde balk met een korte uitleg eronder (zie game/charm.ts).
+ * Pas vanaf drie huizen: daarvoor is er nog weinig te kiezen.
+ */
+function charmBar(): string {
+  const count = charmSummary(),
+    total = count.grim + count.plain + count.cosy + count.lovely;
+  if (total < 3) return '';
+  const parts = CHARM_TIERS.slice()
+    .reverse()
+    .filter(t => count[t.k])
+    .map(t => `<i class="${t.k}" style="flex:${count[t.k]}" title="${t.n}: ${count[t.k]}"></i>`)
+    .join('');
+  const words = CHARM_TIERS.slice()
+    .reverse()
+    .filter(t => count[t.k])
+    .map(t => `${count[t.k]} ${t.n.toLowerCase()}`)
+    .join(' · ');
+  const hint = count.grim
+    ? 'Zet versiering tussen huizen en fabrieken'
+    : count.plain >= count.cosy + count.lovely
+      ? 'Versiering (tabblad Sfeer) geeft huizen meer plek'
+      : '';
+  return `<div class="charmbar" aria-label="Sfeer in je dorp: ${words}"><div class="lbl">Sfeer <span>${words}</span></div><div class="bar">${parts}</div>${hint ? `<p class="why">${hint}</p>` : ''}</div>`;
 }
 $('#jobs').addEventListener('click', e => {
   // Vaste taken open- of dichtklappen: onthouden voordat de browser het blok omzet

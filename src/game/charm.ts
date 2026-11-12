@@ -1,11 +1,12 @@
 // Houdt bij hoe gezellig elk huis is en welke akkers hulp krijgen van een waterput of molen (zie data/charm.ts).
 import type { Building } from '../types';
 import { B } from '../data/buildings';
-import { charmOfHome, charmTier, farmBoostOf } from '../data/charm';
+import { charmFrom, charmOfHome, charmTier, farmBoostOf } from '../data/charm';
 import type { CharmTier } from '../data/charm';
 import { G } from './state';
 import { markTip, tipSeen } from '../core/tips';
 import { toast } from '../ui/hud';
+import { floater } from './fx';
 
 // Per gebouwnummer: de sfeer van een huis, en hoeveel sneller een akker oogst
 const homeCharm = new Map<number, number>();
@@ -54,4 +55,20 @@ export function charmTip(done: Building): void {
     'Tip: zet een bloemperk of totempaal tussen je huizen (tabblad Sfeer, toets G). Gezellige huizen hebben plek voor meer mensen; fabrieken maken ze juist somber.',
     'good',
   );
+}
+
+/**
+ * Versiering (of een fabriek) is net klaar: boven elk huis dat het merkt verschijnt even "+2 sfeer" (roze) of
+ * "−3 sfeer" (grijs), zodat je meteen ziet wat het oplevert.
+ */
+export function showCharmEffect(src: Building): void {
+  const d = B[src.type];
+  if (!d.charm) return;
+  for (const h of G.bs) {
+    if (!h.done || !B[h.type].pop) continue;
+    const v = charmFrom(B, src, h);
+    if (!v) continue;
+    const s = B[h.type].size / 2;
+    floater(h.x + s, h.y + s, `${v > 0 ? '+' : '−'}${Math.abs(v)} sfeer`, v > 0 ? '#e0709a' : '#8a8f99');
+  }
 }

@@ -1154,3 +1154,44 @@ body.v2 #bigMap #mapBig {
   background: var(--charm);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--charm) 22%, transparent);
 }
+/* Sfeer in je dorp: een balk van somber (grijs) tot prachtig (goud), in het paneel Dorp */
+.charmbar {
+  margin-top: 10px;
+}
+.charmbar .lbl {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-2);
+}
+.charmbar .lbl span {
+  font-weight: 400;
+  font-family: var(--f-mono);
+  color: var(--muted);
+}
+.charmbar .bar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--well);
+}
+.charmbar .bar i.lovely {
+  background: #c08a3e;
+}
+.charmbar .bar i.cosy {
+  background: #d77a9c;
+}
+.charmbar .bar i.plain {
+  background: #c9bba0;
+}
+.charmbar .bar i.grim {
+  background: #6b6f78;
+}
+.charmbar .why {
+  margin: 4px 0 0;
+}

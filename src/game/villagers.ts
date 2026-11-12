@@ -17,6 +17,7 @@ import { bMaxHp, carryMax, farmSlots } from './upgrades';
 import { clamp, dist } from '../util/math';
 import { findPath, follow } from '../world/pathfinding';
 import { farmBoostFor } from './charm';
+import { flyToBar } from '../ui/flyres';
 import { amt, claims, isUnl, node, nodeLists, unreach, walkable } from '../world/world';
 
 function nearestDrop(x: number, y: number): Building | null {
@@ -341,6 +342,7 @@ function arrive(v: Villager) {
         G.res[r] += a;
         G.stats.gathered += a;
         floater(v.x, v.y, '+' + a, RES[r].c);
+        flyToBar(v.x, v.y, r); // een icoontje vliegt naar de teller bovenin (zie ui/flyres.ts)
         sfx('drop', 0.25);
       }
       v.carry = { res: null, amt: 0 };

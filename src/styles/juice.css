@@ -65,3 +65,45 @@
 .calm #screenfx.win {
   animation-duration: 2s;
 }
+
+/* Een geleverde grondstof vliegt naar zijn teller (zie ui/flyres.ts) */
+.flyres {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--paper-hi);
+  box-shadow:
+    0 0 0 2px var(--paper-edge),
+    0 4px 10px rgba(30, 20, 10, 0.35);
+}
+.flyres .gem {
+  width: 11px;
+  height: 11px;
+}
+/* De teller tikt even aan als er iets binnenkomt */
+.res.bump,
+#resMore.bump {
+  animation: resbump 0.32s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.res.bump .gem {
+  animation: gemglow 0.5s ease-out;
+}
+@keyframes resbump {
+  40% {
+    transform: scale(1.14);
+  }
+}
+@keyframes gemglow {
+  30% {
+    filter: brightness(1.5) drop-shadow(0 0 4px var(--c));
+  }
+}
+body.calm .res.bump,
+body.calm .res.bump .gem {
+  animation: none;
+}
