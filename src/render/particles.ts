@@ -1,13 +1,36 @@
 // Goedkope deeltjes (rook, stof, vonken, vuurvliegjes): alles in twee getekende "stapels" (instancing).
 import { store } from '../core/store';
 import * as T3 from 'three';
-import { gIco } from './kit';
-import { S3 } from './scene';
+import { S3, hemi, sun } from './scene';
 
 // Vaste ruimte per laag; als hij vol is, wordt het oudste deeltje overschreven.
 const MAX = 700;
 
-// Een basismateriaal met per deeltje een eigen doorzichtigheid (instAlpha).
+/**
+ * Het licht dat op rook, regen en sneeuw valt: de lucht plus een deel van de zon. Overdag bijna wit, 's nachts
+ * gedimd blauwgrijs. Zonder dit licht gloeit witte rook 's nachts als een lampje. We lezen zon en lucht uit
+ * scene.ts (niet uit lighting.ts): zo volgt de rook vanzelf elke verandering in het licht.
+ */
+export const SMOKE_LIGHT = { value: new T3.Color(1, 1, 1) };
+// Nooit donkerder dan maanlicht: met alleen zon en lucht verdween rook 's nachts helemaal tegen de donkere grond
+const MOONLIGHT = new T3.Color(0.3, 0.33, 0.42);
+const sunShare = new T3.Color();
+/** SMOKE_LIGHT bijwerken. Vlak voor het tekenen: dan heeft lighting() zon en lucht voor dit beeldje al gezet. */
+export function updateSmokeLight(): void {
+  const c = SMOKE_LIGHT.value.copy(hemi.color).multiplyScalar(hemi.intensity * 0.9);
+  c.add(sunShare.copy(sun.color).multiplyScalar(sun.intensity * 0.55));
+  c.r = Math.max(MOONLIGHT.r, c.r);
+  c.g = Math.max(MOONLIGHT.g, c.g);
+  c.b = Math.max(MOONLIGHT.b, c.b);
+}
+
+/**
+ * Het materiaal van een laag. Elk deeltje is een plat vierkantje dat altijd recht naar de camera kijkt (een
+ * "billboard") met een zachte ronde vlek erop: dat oogt als een wolkje en kost 2 driehoeken in plaats van de 80
+ * van een bol (die van dichtbij hoekig werd). Per deeltje een eigen doorzichtigheid (instAlpha).
+ * Zachte laag (rook, stof): kleur maal SMOKE_LIGHT, dus 's nachts donker. Gloeilaag (vuur, vonken): telt licht
+ * op en gloeit dus altijd.
+ */
 function fadeMaterial(additive: boolean) {
   const m = new T3.MeshBasicMaterial({
     color: '#ffffff',
@@ -16,16 +39,52 @@ function fadeMaterial(additive: boolean) {
     blending: additive ? T3.AdditiveBlending : T3.NormalBlending,
   });
   m.onBeforeCompile = sh => {
+    if (!additive) sh.uniforms.uLight = SMOKE_LIGHT;
     sh.vertexShader = sh.vertexShader
       .replace(
         '#include <common>',
-        '#include <common>\nattribute float instAlpha;\nvarying float vInstAlpha;',
+        '#include <common>\nattribute float instAlpha;\nvarying float vInstAlpha;\nvarying vec2 vQuad;',
       )
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvInstAlpha = instAlpha;');
+      .replace(
+        '#include <begin_vertex>',
+        '#include <begin_vertex>\nvInstAlpha = instAlpha;\nvQuad = position.xy;',
+      )
+      // Billboard: het midden van het deeltje naar camera-ruimte, en daar het vierkantje plat voor de camera
+      // zetten. De matrix uit stepLayer heeft alleen schaal en plek: de lengte van de eerste kolom is dus precies
+      // de grootte. Het vierkantje schuift ook zijn grootte naar de camera toe, zoals de voorkant van een bol:
+      // anders snijdt de grond een harde rechte rand uit laag stof. (mvPosition heet zo voor fog_vertex.)
+      .replace(
+        '#include <project_vertex>',
+        `float pSize = length( instanceMatrix[ 0 ].xyz );
+        vec4 mvPosition = modelViewMatrix * vec4( instanceMatrix[ 3 ].xyz, 1.0 );
+        mvPosition.xy += position.xy * pSize * 2.0;
+        mvPosition.z += pSize;
+        gl_Position = projectionMatrix * mvPosition;`,
+      );
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vInstAlpha;')
-      .replace('vec4( diffuse, opacity )', 'vec4( diffuse, opacity * vInstAlpha )');
+      .replace(
+        '#include <common>',
+        '#include <common>\nvarying float vInstAlpha;\nvarying vec2 vQuad;' +
+          (additive ? '' : '\nuniform vec3 uLight;'),
+      )
+      .replace(
+        'vec4 diffuseColor = vec4( diffuse, opacity );',
+        additive
+          ? // Gloed: fel in het midden en snel zwakker naar de rand (de 1.8 maakt goed dat de rand nu zacht is)
+            `float r = length( vQuad ) * 2.0;
+            vec4 diffuseColor = vec4( diffuse, opacity * vInstAlpha * 1.8 * pow( max( 0.0, 1.0 - r ), 1.6 ) );`
+          : // Rook: een zachte ronde vlek, linksboven iets lichter (alsof de zon erop schijnt), maal het licht van
+            // nu. Een zachte rand laat minder zien dan een volle bol; 1.4 maakt dat goed, zodat alle emit()-
+            // aanroepen hun oude sterkte houden. Nooit boven 1, anders geeft het mengen vreemde randen.
+            `float r2 = dot( vQuad, vQuad ) * 4.0;
+            float soft = pow( max( 0.0, 1.0 - r2 ), 1.5 );
+            float shade = 0.88 + 0.4 * dot( vQuad, vec2( -0.45, 0.55 ) );
+            vec4 diffuseColor = vec4( diffuse * uLight * shade, min( 1.0, opacity * vInstAlpha * 1.4 * soft ) );`,
+      );
   };
+  // Beide lagen hebben dezelfde onBeforeCompile-tekst, en three.js kiest het programma op die tekst: zonder een
+  // eigen naam per laag zouden ze stilletjes één shader delen (dan gloeit de rook, of de vonken niet).
+  m.customProgramCacheKey = () => (additive ? 'tp-glow' : 'tp-smoke');
   return m;
 }
 
@@ -46,15 +105,16 @@ interface Layer {
   a0: Float32Array;
   grav: Float32Array;
 }
-function makeLayer(additive: boolean, detail: number): Layer {
-  const mesh = new T3.InstancedMesh(gIco(detail), fadeMaterial(additive), MAX);
+function makeLayer(additive: boolean): Layer {
+  // Een vierkantje van 1 bij 1 in het xy-vlak (eigen exemplaar per laag, met instAlpha erbij)
+  const geometry = new T3.PlaneGeometry(1, 1);
+  const mesh = new T3.InstancedMesh(geometry, fadeMaterial(additive), MAX);
   mesh.instanceMatrix.setUsage(T3.DynamicDrawUsage);
   mesh.instanceColor = new T3.InstancedBufferAttribute(new Float32Array(MAX * 3), 3);
   mesh.instanceColor.setUsage(T3.DynamicDrawUsage);
   const alpha = new T3.InstancedBufferAttribute(new Float32Array(MAX), 1);
   alpha.setUsage(T3.DynamicDrawUsage);
-  mesh.geometry = mesh.geometry.clone();
-  mesh.geometry.setAttribute('instAlpha', alpha);
+  geometry.setAttribute('instAlpha', alpha);
   mesh.frustumCulled = false;
   mesh.count = 0;
   mesh.renderOrder = additive ? 5 : 4;
@@ -74,8 +134,10 @@ function makeLayer(additive: boolean, detail: number): Layer {
     grav: new Float32Array(MAX),
   };
 }
-const SOFT = makeLayer(false, 1),
-  GLOW = makeLayer(true, 0);
+const SOFT = makeLayer(false),
+  GLOW = makeLayer(true);
+// Het licht op de rook bijwerken vlak voordat die getekend wordt
+SOFT.mesh.onBeforeRender = updateSmokeLight;
 
 /** Laag kiezen: 'soft' (rook, stof) of 'glow' (vuur, vonken, lichtjes). */
 export const LAYER = { soft: SOFT, glow: GLOW };

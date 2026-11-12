@@ -6,11 +6,11 @@ import { G } from '../game/state';
 import { camDist, pxu } from './camera';
 import { pool, ringAt } from './decals';
 import { GB, gIco, mat } from './kit';
-import { S3, cam } from './scene';
+import { CAM3, R3, S3, cam } from './scene';
 import { hash2 } from '../util/random';
 import { meteorPosition } from '../game/meteors';
 import { smoothPos } from './sync';
-import { LAYER, emit, puff } from './particles';
+import { LAYER, SMOKE_LIGHT, emit, puff, updateSmokeLight } from './particles';
 import { season } from '../game/time';
 
 /** Een projectiel zoals het hier getekend wordt: sx, sy = waar het voor het eerst te zien was. */
@@ -109,7 +109,8 @@ function drawMarks() {
   }
 }
 
-// Eenmalig als een effect voor het eerst getekend wordt: stof, vonken en lichtflitsen
+const smokeColor = new T3.Color();
+// Eenmalig als een effect voor het eerst getekend wordt: stof, vonken, lichtflitsen en rook
 function firstSight(e: Fx) {
   if (e.type === 'boom') {
     const big = (e.r || 0.5) >= 2;
@@ -162,6 +163,11 @@ function firstSight(e: Fx) {
   } else if (e.type === 'beam') {
     emit(LAYER.glow, e.x2, 0.45, e.y2, 0, 0, 0, 0.18, 0.12, 0.3, 0xffffff, 1);
     puff(LAYER.glow, 4, e.x2, 0.45, e.y2, 1.6, 1.4, 0.3, 0.03, 0.01, 0x7ff7ff, 1, -5);
+  } else if (e.type === 'smoke') {
+    // Rookwolkje uit de spelstand (sneuvelen, slopen): één zacht deeltje dat opstijgt en meewaait, net zoals
+    // de spelstand het laat bewegen (z en vz zijn in 32ste delen van een tegel)
+    const color = smokeColor.set(e.col || '#e9ebe4').getHex();
+    emit(LAYER.soft, e.x, 0.2 + e.z / 32, e.y, 0.12, e.vz / 32, -0.12, e.max, 0.12, 0.47, color, 0.5);
   }
 }
 
@@ -262,6 +268,8 @@ export function drawFx() {
     }
   }
   if (smokeT >= 1 / 60) smokeT = 0;
+  // Zonder deeltjes ('Laag') tekenen we rook als bolletjes, getint met het licht van het vorige beeldje
+  if (store.noParticles) updateSmokeLight();
   for (const e of G.fx as DrawnFx[]) {
     if (!e.seen3) {
       e.seen3 = 1;
@@ -270,8 +278,11 @@ export function drawFx() {
     // Hoeveel er nog over is (1 = net begonnen, 0 = voorbij); alleen gebruikt bij effecten met een max
     const k = e.life / (e as { max: number }).max;
     if (e.type === 'smoke') {
+      // Rook is een deeltje (zie firstSight). Alleen zonder deeltjes een eenvoudig bolletje, zodat sneuvelen en
+      // slopen ook op 'Laag' een wolkje geven
+      if (!store.noParticles) continue;
       const m = pool('smoke', sphM);
-      m.material.color.set(e.col || '#e9ebe4');
+      m.material.color.set(e.col || '#e9ebe4').multiply(SMOKE_LIGHT.value);
       m.material.opacity = k * 0.5;
       m.position.set(e.x, 0.2 + (e.z || 0) / 32, e.y);
       m.scale.setScalar(0.12 + (1 - k) * 0.35);
@@ -319,76 +330,223 @@ const BEAM_LAYERS: [string, number, string | 0, number][] = [
   ['beam', 0.09, 0, 0.55],
   ['beamcore', 0.03, '#ffffff', 1],
 ];
-let RAIN: T3.LineSegments<T3.BufferGeometry, T3.LineBasicMaterial> | null = null,
-  SNOW: T3.Points<T3.BufferGeometry, T3.PointsMaterial> | null = null;
-// Sneeuw: in de winter valt er sneeuw in plaats van regen. Losse puntjes die langzaam dwarrelen.
-function drawSnow(on: boolean) {
-  if (!on) {
-    if (SNOW) SNOW.visible = false;
-    return;
+
+// Regen en sneeuw rekent de videokaart uit. Elke druppel of vlok heeft vaste toevalsgetallen (seed); de shader
+// berekent zelf waar hij nu is, uit de tijd en de plek van de camera. Zo kost het per beeldje geen rekenwerk
+// en hoeft er niets nieuws naar de videokaart: alleen een paar getallen (uniforms) hieronder.
+/** Hoeveel druppels en vlokken per kwaliteitsstand (een eigen stand telt als 'Hoog'). */
+const RAIN_DROPS: Record<string, number> = { low: 600, mid: 900, high: 1500 },
+  SNOW_FLAKES: Record<string, number> = { low: 600, mid: 1000, high: 1400 };
+const countFor = (table: Record<string, number>) => table[store.quality || 'high'] ?? table.high;
+/** Getallen die regen en sneeuw delen; drawRain zet ze elk beeldje. */
+const WEATHER = {
+  // Het gebied met regen: een rechthoek recht voor de camera (midden, halve breedte en halve diepte als
+  // richting). Alleen wat daar valt komt in beeld; een vierkant rond het midden liet 9 op de 10 druppels
+  // buiten beeld vallen.
+  uCenter: { value: new T3.Vector2() },
+  uSide: { value: new T3.Vector2() },
+  uFwd: { value: new T3.Vector2() },
+  // Hoogste punt van een val: de helft van de camerahoogte, zodat er niets door de lens valt
+  uTop: { value: 10 },
+  // Dichter bij de camera dan dit vervagen ze (van heel dichtbij zou een druppel een lange streep worden)
+  uNear: { value: 1 },
+  // Hoe ver de camera weg is vergeleken met zoom 1: alles groeit mee, zodat regen er bij elke zoom hetzelfde uitziet
+  uScale: { value: 1 },
+  uTime: { value: 0 },
+  // Grootte van de tekenbuffer in pixels, en hoe breed een regenstreep daarin is (zie updateWeather)
+  uRes: { value: new T3.Vector2(1, 1) },
+  uWidth: { value: 1.5 },
+  // Het licht van nu, zodat regen en sneeuw 's nachts niet oplichten (zie particles.ts)
+  uLight: SMOKE_LIGHT,
+};
+// Gedeelde shadercode: waar een druppel of vlok nu is. 'rate' is hoe vaak per seconde hij helemaal valt; 'fall'
+// loopt van 1 (bovenaan) naar 0 (op de grond). Bij elke nieuwe val schuift hij naar een andere plek (een hash
+// zonder sinus, die op elke videokaart hetzelfde werkt): anders valt dezelfde druppel steeds op hetzelfde plekje.
+const WEATHER_GLSL = `attribute vec4 seed;
+uniform vec2 uCenter, uSide, uFwd;
+uniform float uTop, uNear, uScale, uTime;
+vec2 weatherHash( vec2 p ) {
+  vec3 p3 = fract( vec3( p.xyx ) * vec3( 0.1031, 0.1030, 0.0973 ) );
+  p3 += dot( p3, p3.yzx + 33.33 );
+  return fract( ( p3.xx + p3.yz ) * p3.zy );
+}
+vec3 weatherSpot( float rate, out float fall ) {
+  float phase = seed.z - uTime * rate;
+  fall = fract( phase );
+  vec2 pick = fract( seed.xy + weatherHash( vec2( floor( phase ), seed.w * 997.0 ) ) );
+  vec2 xz = uCenter + uSide * ( pick.x * 2.0 - 1.0 ) + uFwd * ( pick.y * 2.0 - 1.0 );
+  return vec3( xz.x, fall * uTop, xz.y );
+}`;
+
+/** Per druppel of vlok vier vaste toevalsgetallen tussen 0 en 1: plek (twee), begin van de val en snelheid. */
+function weatherSeeds(n: number): Float32Array {
+  const s = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    s[i * 4] = hash2(i, 1, 2);
+    s[i * 4 + 1] = hash2(i, 3, 4);
+    s[i * 4 + 2] = hash2(i, 5, 6);
+    s[i * 4 + 3] = hash2(i, 7, 8);
   }
-  if (!SNOW) {
-    const n = 1400,
-      g = new T3.BufferGeometry();
-    g.setAttribute('position', new T3.BufferAttribute(new Float32Array(n * 3), 3));
-    SNOW = new T3.Points(
-      g,
-      new T3.PointsMaterial({
-        color: '#ffffff',
-        size: 0.09,
-        transparent: true,
-        opacity: 0.85,
-        depthWrite: false,
-      }),
-    );
-    SNOW.frustumCulled = false;
-    S3.add(SNOW);
-  }
-  SNOW.visible = true;
-  const p = (SNOW.geometry.attributes.position as T3.BufferAttribute).array as Float32Array,
-    R = camDist() * 0.8,
-    t = store.TM;
-  for (let i = 0; i < p.length / 3; i++) {
-    const y = (((hash2(i, 5, 6) * 12 - t * (0.7 + hash2(i, 7, 8) * 0.5)) % 12) + 12) % 12;
-    p[i * 3] = cam.x + (hash2(i, 1, 2) - 0.5) * R * 2 + Math.sin(t * 0.8 + i) * 0.3;
-    p[i * 3 + 1] = y;
-    p[i * 3 + 2] = cam.y + (hash2(i, 3, 4) - 0.5) * R * 2 + Math.cos(t * 0.6 + i * 1.3) * 0.3;
-  }
-  SNOW.geometry.attributes.position.needsUpdate = true;
+  return s;
 }
 
+// Regen: elke druppel is een smal streepje (twee driehoeken), allemaal in één keer getekend (instancing)
+function makeRain() {
+  const n = RAIN_DROPS.high;
+  const g = new T3.InstancedBufferGeometry();
+  // Eén streep: x gaat dwars (-0.5 tot 0.5), y van de kop (0, onderaan) naar de staart (1, bovenaan)
+  g.setAttribute(
+    'position',
+    new T3.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0], 3),
+  );
+  g.setIndex([0, 1, 2, 0, 2, 3]);
+  g.setAttribute('seed', new T3.InstancedBufferAttribute(weatherSeeds(n), 4));
+  const m = new T3.MeshBasicMaterial({
+    color: '#d6e4f0',
+    transparent: true,
+    opacity: 0.6,
+    depthWrite: false,
+  });
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, WEATHER);
+    sh.vertexShader = sh.vertexShader
+      .replace(
+        '#include <common>',
+        `#include <common>\n${WEATHER_GLSL}\nuniform vec2 uRes;\nuniform float uWidth;\nvarying vec2 vRain;\nvarying float vRainFade;`,
+      )
+      // De streep: de kop valt ruim één keer per seconde, een beetje schuin door de wind, en de staart ligt
+      // erachter langs die richting. Daarna maken we hem dwars op het scherm een vast aantal pixels breed: een
+      // gewone lijn is maar 1 pixel en op een scherp scherm bijna onzichtbaar. 'across' wijst rechts van de
+      // streep: zo staan de hoeken tegen de klok in en is de voorkant te zien (de achterkant tekent three.js
+      // niet). (mvPosition heet zo voor fog_vertex: nevel maakt verre regen vaag.)
+      .replace(
+        '#include <project_vertex>',
+        `float fall;
+        vec3 head = weatherSpot( 1.3 * ( 1.0 + seed.w * 0.3 ), fall );
+        vec3 wind = vec3( -0.16, 1.0, 0.16 );
+        head.xz += wind.xz * head.y;
+        vec3 tail = head + wind * 0.68 * uScale;
+        vec4 mvHead = modelViewMatrix * vec4( head, 1.0 );
+        vec4 mvTail = modelViewMatrix * vec4( tail, 1.0 );
+        vec4 mvPosition = mix( mvHead, mvTail, position.y );
+        vec4 clipHead = projectionMatrix * mvHead;
+        vec4 clipTail = projectionMatrix * mvTail;
+        gl_Position = mix( clipHead, clipTail, position.y );
+        vec2 along = ( clipTail.xy / max( clipTail.w, 0.001 ) - clipHead.xy / max( clipHead.w, 0.001 ) ) * uRes;
+        vec2 across = normalize( vec2( along.y, -along.x ) + vec2( 0.0001, 0.0 ) );
+        gl_Position.xy += across * position.x * uWidth * 2.0 / uRes * gl_Position.w;
+        vRain = position.xy;
+        vRainFade = smoothstep( uNear * 0.6, uNear, -mvPosition.z ) * smoothstep( 1.0, 0.85, fall );`,
+      );
+    sh.fragmentShader = sh.fragmentShader
+      .replace(
+        '#include <common>',
+        '#include <common>\nuniform vec3 uLight;\nvarying vec2 vRain;\nvarying float vRainFade;',
+      )
+      // Zacht begin bij de kop en een staart die uitloopt; de kleur maal het licht van nu
+      .replace(
+        'vec4 diffuseColor = vec4( diffuse, opacity );',
+        `float streak = smoothstep( 0.0, 0.15, vRain.y ) * ( 1.0 - smoothstep( 0.3, 1.0, vRain.y ) );
+        vec4 diffuseColor = vec4( diffuse * uLight, opacity * streak * vRainFade );`,
+      );
+  };
+  m.customProgramCacheKey = () => 'tp-rain';
+  const mesh = new T3.Mesh(g, m);
+  // De plekken bestaan alleen in de shader: three.js kan niet zien of de regen in beeld is
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 6;
+  mesh.onBeforeRender = updateSmokeLight;
+  S3.add(mesh);
+  return mesh;
+}
+
+// Sneeuw: in de winter valt er sneeuw in plaats van regen. Zachte ronde vlokjes die langzaam dwarrelen.
+function makeSnow() {
+  const n = SNOW_FLAKES.high;
+  const g = new T3.BufferGeometry();
+  // De plek rekent de shader uit; position is er alleen zodat three.js weet hoeveel vlokken er zijn
+  g.setAttribute('position', new T3.BufferAttribute(new Float32Array(n * 3), 3));
+  g.setAttribute('seed', new T3.BufferAttribute(weatherSeeds(n), 4));
+  const m = new T3.PointsMaterial({
+    color: '#ffffff',
+    size: 0.24,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+  });
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, WEATHER);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', `#include <common>\n${WEATHER_GLSL}\nvarying float vSnowFade;`)
+      // Langzaam vallen (één val duurt 9 tot 15 seconden) en zacht heen en weer dwarrelen
+      .replace(
+        '#include <begin_vertex>',
+        `float fall;
+        vec3 transformed = weatherSpot( 0.066 * ( 1.0 + seed.w * 0.7 ), fall );
+        transformed.x += sin( uTime * 0.8 + seed.w * 40.0 ) * 0.3 * uScale;
+        transformed.z += cos( uTime * 0.6 + seed.z * 50.0 ) * 0.3 * uScale;`,
+      )
+      // Minstens 2 pixels, anders is er geen ronde vlok te tekenen; te dichtbij en bovenaan zacht vervagen
+      .replace(
+        '#include <fog_vertex>',
+        `#include <fog_vertex>
+        gl_PointSize = max( gl_PointSize, 2.0 );
+        vSnowFade = smoothstep( uNear * 0.6, uNear, -mvPosition.z ) * smoothstep( 1.0, 0.9, fall );`,
+      );
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform vec3 uLight;\nvarying float vSnowFade;')
+      // Een zachte ronde vlok in plaats van een vierkantje, maal het licht van nu
+      .replace(
+        'vec4 diffuseColor = vec4( diffuse, opacity );',
+        `vec2 pc = gl_PointCoord * 2.0 - 1.0;
+        float flake = pow( max( 0.0, 1.0 - dot( pc, pc ) ), 1.5 );
+        vec4 diffuseColor = vec4( diffuse * uLight, opacity * flake * vSnowFade );`,
+      );
+  };
+  m.customProgramCacheKey = () => 'tp-snow';
+  const points = new T3.Points(g, m);
+  points.frustumCulled = false;
+  points.renderOrder = 6;
+  points.onBeforeRender = updateSmokeLight;
+  S3.add(points);
+  return points;
+}
+
+let RAIN: T3.Mesh<T3.InstancedBufferGeometry, T3.MeshBasicMaterial> | null = null,
+  SNOW: T3.Points<T3.BufferGeometry, T3.PointsMaterial> | null = null;
+// Het gebied met regen, recht voor de camera: in kijkrichting een halve diepte van 0.45 keer de afstand tot de
+// camera, opzij afhankelijk van hoe breed het beeld is (gemeten voor de schuine camera van het spel)
+function updateWeather() {
+  const d = camDist(),
+    fx = cam.x - CAM3.position.x,
+    fz = cam.y - CAM3.position.z,
+    fl = Math.hypot(fx, fz) || 1;
+  WEATHER.uFwd.value.set((fx / fl) * d * 0.45, (fz / fl) * d * 0.45);
+  WEATHER.uSide.value.set((-fz / fl) * d * 0.36 * CAM3.aspect, (fx / fl) * d * 0.36 * CAM3.aspect);
+  WEATHER.uCenter.value.set(cam.x, cam.y);
+  WEATHER.uTop.value = CAM3.position.y * 0.5;
+  WEATHER.uNear.value = d * 0.3;
+  WEATHER.uScale.value = d / 27;
+  // De tijd loopt rond na een uur: met heel grote getallen gaat de shader schokkerig rekenen
+  WEATHER.uTime.value = store.TM % 3600;
+  R3.getDrawingBufferSize(WEATHER.uRes.value);
+  // Een streep is 1.5 pixel van de tekenbuffer breed, en op een scherp scherm minstens 1.1 schermpixel. Met het
+  // maximum aantal pixels per kwaliteitsstand (zie scene.ts) blijft dat ook op een 5K-scherm goedkoop.
+  WEATHER.uWidth.value = Math.max(1.5, 1.1 * R3.getPixelRatio());
+}
 export function drawRain() {
-  const snow = !!G.rain && season().n === 'Winter';
-  drawSnow(snow);
-  if (!G.rain || snow) {
-    if (RAIN) RAIN.visible = false;
-    return;
+  const snow = !!G.rain && season().n === 'Winter',
+    rain = !!G.rain && !snow;
+  if (rain || snow) updateWeather();
+  if (rain) {
+    if (!RAIN) RAIN = makeRain();
+    // Hoeveel druppels (de rest van de lijst wordt niet getekend)
+    RAIN.geometry.instanceCount = countFor(RAIN_DROPS);
   }
-  if (!RAIN) {
-    const n = 900,
-      g = new T3.BufferGeometry(),
-      p = new Float32Array(n * 6);
-    g.setAttribute('position', new T3.BufferAttribute(p, 3));
-    RAIN = new T3.LineSegments(
-      g,
-      new T3.LineBasicMaterial({ color: '#cfe0ee', transparent: true, opacity: 0.45 }),
-    );
-    RAIN.frustumCulled = false;
-    S3.add(RAIN);
+  if (RAIN) RAIN.visible = rain;
+  if (snow) {
+    if (!SNOW) SNOW = makeSnow();
+    SNOW.geometry.setDrawRange(0, countFor(SNOW_FLAKES));
   }
-  RAIN.visible = true;
-  const p = (RAIN.geometry.attributes.position as T3.BufferAttribute).array as Float32Array,
-    R = camDist() * 0.8;
-  for (let i = 0; i < p.length / 6; i++) {
-    const x = cam.x + (hash2(i, 1, 2) - 0.5) * R * 2,
-      z = cam.y + (hash2(i, 3, 4) - 0.5) * R * 2,
-      y = (((hash2(i, 5, 6) * 20 - store.TM * 14 * (1 + hash2(i, 7, 8) * 0.3)) % 20) + 20) % 20;
-    p[i * 6] = x;
-    p[i * 6 + 1] = y;
-    p[i * 6 + 2] = z;
-    p[i * 6 + 3] = x - 0.08;
-    p[i * 6 + 4] = y + 0.5;
-    p[i * 6 + 5] = z + 0.08;
-  }
-  RAIN.geometry.attributes.position.needsUpdate = true;
+  if (SNOW) SNOW.visible = snow;
 }

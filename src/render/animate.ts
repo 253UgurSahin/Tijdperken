@@ -100,7 +100,8 @@ function onAttack(r: EntityRec) {
   emit(LAYER.glow, x, y, z, 0, 0, 0, 0.09, M[3], M[3] * 1.6, M[2], 1);
   emit(LAYER.glow, x + fx * 0.08, y, z + fz * 0.08, fx * 2, 0, fz * 2, 0.07, M[3] * 0.6, M[3], 0xffffff, 0.9);
   if (r.atk === 'musket') {
-    // Zwart kruit: een flinke witte rookwolk die blijft hangen
+    // Zwart kruit: een flinke witte rookwolk die blijft hangen. De wolkjes groeien zo groot dat ze in elkaar
+    // overlopen: één wolk in plaats van een rijtje van vier bolletjes.
     for (let k = 0; k < 4; k++)
       emit(
         LAYER.soft,
@@ -112,7 +113,7 @@ function onAttack(r: EntityRec) {
         fz * (0.6 + k * 0.3),
         1.6,
         0.06,
-        0.26,
+        0.4,
         0xeceae2,
         0.6,
       );
