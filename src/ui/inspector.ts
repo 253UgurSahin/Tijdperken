@@ -25,6 +25,8 @@ import {
   marketPrices,
   maxLvl,
   toolCost,
+  towerDamage,
+  towerRange,
   upgCost,
   upgradeRows,
   upgrade,
@@ -41,7 +43,7 @@ import { selectArmy, selectIdle } from '../input/input';
 import { CHAPTERS } from '../game/chapters';
 import { iconFor, portrait } from '../render/icons';
 import { bShort } from './buildmenu';
-import { TOUCH, compareHTML, compareText, costHTML, esc, fmt, gem, hy, theAge } from './format';
+import { TOUCH, compareHTML, compareText, costHTML, esc, fmt, fmtDec, gem, hy, theAge } from './format';
 import { ico } from './glyphs';
 import { setHTML, sigs } from './header';
 import { setExpand, toast } from './hud';
@@ -426,7 +428,7 @@ export function renderInspector() {
     }
     if (d.pop) h += `<div class="stats"><span><i>${ico('⌂')}</i>${bPop(b)} inwoners</span></div>`;
     if (d.def)
-      h += `<div class="stats"><span><i>${ico('⚔')}</i>${Math.round(d.def.dmg * (1 + 0.4 * lvlOf(b)))} schade</span><span><i>${ico('◎')}</i>bereik ${d.def.r}</span></div>`;
+      h += `<div class="stats"><span><i>${ico('⚔')}</i>${Math.round(towerDamage(b))} schade</span><span><i>${ico('◎')}</i>bereik ${fmtDec(towerRange(b))}</span></div>`;
     if (UPG_OK(b.type)) {
       const l = lvlOf(b),
         top = AGES.length - 1 - B[b.type].age,

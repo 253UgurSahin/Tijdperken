@@ -12,6 +12,8 @@ export const fmt = (n: number): string => {
       ? (n / 1000).toFixed(1) + 'k'
       : n.toLocaleString('nl-NL');
 };
+/** Een getal met hoogstens één cijfer achter de komma, op zijn Nederlands (6,5 in plaats van 6.5). */
+export const fmtDec = (n: number): string => n.toLocaleString('nl-NL', { maximumFractionDigits: 1 });
 const SHAPE: Record<string, string> = {
   food: 'circle(50%)',
   wood: 'polygon(50% 0,100% 88%,0 88%)',

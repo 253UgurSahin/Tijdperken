@@ -11,25 +11,12 @@ import { popCap, popNow, spawnUnit, spawnVillager, trainCost } from './entities'
 import { floater } from './fx';
 import { fire, nearestFoe } from './military';
 import { G } from './state';
-import { add, mul } from './bonus';
-import { bRate, lvlOf } from './upgrades';
+import { mul } from './bonus';
+import { bRate, lvlOf, towerDamage, towerRange } from './upgrades';
+// Elders importeren ze towerDamage nog uit dit bestand
+export { towerDamage };
 import { amt, node } from '../world/world';
 
-/**
- * Hoeveel schade een toren (of het stamhuis) per schot doet, met niveau en bonussen. Het stamhuis wordt per
- * tijdperk sterker, maar minder hard dan vroeger (×0,5 per tijdperk in plaats van ×0,8): zo hield het in de
- * eerste tijdperken bijna elke aanval in zijn eentje tegen, en deed je eigen verdediging er niet toe.
- */
-export function towerDamage(b: Building): number {
-  const d = B[b.type];
-  if (!d.def) return 0;
-  return (
-    (b.type === 'townhall' ? d.def.dmg * (1 + G.age * 0.5) : d.def.dmg) *
-    (1 + 0.4 * lvlOf(b)) *
-    mul('tower.dmg') *
-    (d.def.laser ? mul('laser.dmg') : 1)
-  );
-}
 export function bUpdate(b: Building, dt: number): void {
   if (b.flash) b.flash -= dt; // de treffer-flits loopt af (zie hit in military.ts)
   if (!b.done) return;
@@ -99,12 +86,7 @@ export function bUpdate(b: Building, dt: number): void {
       const s = d.size / 2,
         x = b.x + s,
         y = b.y + s,
-        f = nearestFoe(
-          x,
-          y,
-          d.def.r + 0.5 * lvlOf(b) + (b.type !== 'townhall' ? add('tower.range') : 0),
-          d.def.air,
-        );
+        f = nearestFoe(x, y, towerRange(b), d.def.air);
       if (f) {
         fire(b, x, y, f, {
           dmg: towerDamage(b),

@@ -27,6 +27,29 @@ export const UPG_OK = (k: string): boolean => {
   );
 };
 export const lvlOf = (b: Building | null | undefined): number => (b && b.lvl) || 0;
+
+/**
+ * Hoeveel schade een toren (of het stamhuis) per schot doet, met niveau en bonussen. Het stamhuis wordt per
+ * tijdperk sterker, maar minder hard dan vroeger (×0,5 per tijdperk in plaats van ×0,8): zo hield het in de
+ * eerste tijdperken bijna elke aanval in zijn eentje tegen, en deed je eigen verdediging er niet toe.
+ * `l`: voor welk niveau (standaard het niveau van nu), zodat de verbeterkaart "nu → straks" kan tonen.
+ */
+export function towerDamage(b: Building, l = lvlOf(b)): number {
+  const d = B[b.type];
+  if (!d.def) return 0;
+  return (
+    (b.type === 'townhall' ? d.def.dmg * (1 + G.age * 0.5) : d.def.dmg) *
+    (1 + 0.4 * l) *
+    mul('tower.dmg') *
+    (d.def.laser ? mul('laser.dmg') : 1)
+  );
+}
+/** Hoe ver een toren (of het stamhuis) schiet, met niveau en bonussen (onderzoek Ballistiek telt niet voor het stamhuis). */
+export function towerRange(b: Building, l = lvlOf(b)): number {
+  const d = B[b.type];
+  if (!d.def) return 0;
+  return d.def.r + 0.5 * l + (b.type !== 'townhall' ? add('tower.range') : 0);
+}
 export const maxLvl = (b: Building): number => (UPG_OK(b.type) ? Math.max(0, G.age - B[b.type].age) : 0);
 export const canUpg = (b: Building): boolean => b.done && lvlOf(b) < maxLvl(b);
 // Het stamhuis groeit mee met je tijdperk, anders is het in latere tijdperken te snel gesloopt
@@ -70,6 +93,8 @@ export function upgCost(b: Building): Cost {
  * wat je ervoor terugkrijgt. De formules zijn dezelfde als die het spel zelf gebruikt.
  */
 const pct = (x: number): string => Math.round(x * 100) + '%';
+// Bereik met een komma, zoals 6,5
+const dec = (x: number): string => x.toLocaleString('nl-NL', { maximumFractionDigits: 1 });
 export function upgradeRows(b: Building): UpgradeRow[] {
   const d = B[b.type],
     l = lvlOf(b),
@@ -77,12 +102,8 @@ export function upgradeRows(b: Building): UpgradeRow[] {
     rows: UpgradeRow[] = [];
   if (d.pop) rows.push(['Inwoners', Math.round(d.pop * (1 + 0.4 * l)), Math.round(d.pop * (1 + 0.4 * n))]);
   if (d.def) {
-    rows.push([
-      'Schade per schot',
-      Math.round(d.def.dmg * (1 + 0.4 * l)),
-      Math.round(d.def.dmg * (1 + 0.4 * n)),
-    ]);
-    rows.push(['Bereik', d.def.r + 0.5 * l, d.def.r + 0.5 * n]);
+    rows.push(['Schade per schot', Math.round(towerDamage(b, l)), Math.round(towerDamage(b, n))]);
+    rows.push(['Bereik', dec(towerRange(b, l)), dec(towerRange(b, n))]);
   }
   if (d.conv || d.pump) rows.push(['Productiesnelheid', pct(1 + 0.25 * l), pct(1 + 0.25 * n)]);
   if (d.gen)
