@@ -21,4 +21,5 @@
 @import './army.css';
 @import './saveslots.css';
 @import './juice.css';
+@import './together.css';
 @import './settings.css'; /* als laatste: de grootte-instelling moet boven de rest winnen */

@@ -25,6 +25,8 @@ import { showAchievement } from '../ui/achievements';
 import { showEndScreen } from '../ui/endscreen';
 import { note, screenEffect } from '../ui/hud';
 import { sfx } from '../audio/sound';
+import { shareDailyScore } from '../ui/together';
+import { DAILY } from '../data/scenarios';
 import { startFireworks } from '../render/fireworks';
 
 /** Stond de vredige modus in dit spel ooit aan? Dan telt de score als Vredig, ook als hij nu uit staat. */
@@ -164,6 +166,8 @@ export function finishGame(): GameResult {
     ? addChallengeResult(getProfile(), game, at)
     : addResult(getProfile(), game, at);
   saveProfile();
+  // De wereld van de dag: je score ook op de gedeelde ranglijst (alleen in de artifact; zie ui/together.ts)
+  if (game.scenario === DAILY && game.date) shareDailyScore(game.date, game.score, game.medal, game.won);
   G.result = resultOf(score, game, at, record);
   return G.result;
 }

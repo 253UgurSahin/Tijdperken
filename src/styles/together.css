@@ -1,0 +1,168 @@
+/* Samen spelen (zie ui/together.ts): de ranglijst van vandaag en de dorpen van anderen, in de papierstijl */
+#title .tw.tg {
+  width: min(720px, 100%);
+}
+.tgtabs {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: var(--r-sm);
+  background: var(--well);
+}
+.tgtabs button {
+  flex: 1;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-weight: 600;
+  background: transparent;
+  box-shadow: none;
+}
+.tgtabs button.on {
+  background: var(--paper-hi);
+  box-shadow: var(--tile-shadow);
+}
+.tgbody {
+  min-height: 160px;
+}
+/* Een persoon: rond plaatje met naam */
+.tgav {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--well);
+  object-fit: cover;
+}
+.tgname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tgname em {
+  color: var(--muted);
+  font-style: normal;
+}
+/* De ranglijst */
+.tgrank {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.tgrank li {
+  display: grid;
+  grid-template-columns: 30px 28px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: var(--paper-hi);
+  box-shadow: var(--tile-shadow);
+}
+.tgrank li.me {
+  outline: 2px solid var(--acc);
+}
+.tgrank li:nth-child(-n + 3) .tgpos {
+  color: var(--acc-ink);
+}
+.tgpos {
+  font-family: var(--f-display);
+  font-size: 20px;
+  text-align: center;
+}
+.tgscore {
+  font-family: var(--f-mono);
+  font-size: 15px;
+}
+.tgmedal .medal {
+  transform: scale(0.8);
+}
+/* De dorpen: kaartjes in een raster */
+.tggrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+.tgcard {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 12px;
+  border-radius: var(--r-sm);
+  background: var(--paper-hi);
+  box-shadow: var(--tile-shadow);
+}
+.tgcard.me {
+  outline: 2px solid var(--acc);
+}
+.tgcard b {
+  font-family: var(--f-display);
+  font-size: 18px;
+}
+.tgcard small {
+  color: var(--muted);
+}
+.tgwho {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* Eén dorp bekijken: de plattegrond */
+.tgview {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.tgview h2 {
+  margin: 0;
+}
+.tgmap {
+  width: min(100%, 420px);
+  aspect-ratio: 1;
+  height: auto;
+  border-radius: var(--r-sm);
+  box-shadow:
+    0 0 0 3px var(--paper-edge),
+    var(--tile-shadow);
+}
+.tglegend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin: 0 3px 0 8px;
+  border-radius: 2px;
+  background: var(--c);
+  vertical-align: -1px;
+}
+/* Delen: onderaan het scherm */
+.tgshare {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  background: var(--acc-soft);
+}
+.tgshare small {
+  display: block;
+  color: var(--fg-2);
+}
+.tgnote {
+  margin: 0;
+}
+@media (max-width: 620px) {
+  .tgrank li {
+    grid-template-columns: 24px 28px minmax(0, 1fr) auto;
+  }
+  .tgrank .tgmedal {
+    display: none;
+  }
+  .tgshare {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

@@ -44,6 +44,7 @@ import { peopleBarHTML, playerProfile } from './peoples';
 import { achievementCount, showProfile } from './profile';
 import { showLoadScreen, showSaveScreen } from './saveslots';
 import { $ } from '../util/dom';
+import { showTogether, togetherAvailable } from './together';
 import { LEVELS, setQuality } from '../render/quality';
 
 let prevSpeed = 1;
@@ -500,6 +501,7 @@ export function showTitle({ setup = false, challenges = false, focus = null }: T
       </div>
     </div>
     <div class="mstack">
+      <button class="mbtn" data-t="together" hidden><span>Samen spelen</span><small class="whole">ranglijst van vandaag · dorpen van anderen</small></button>
       ${profileRow}
       <div class="mpair">
         <button class="mbtn" data-t="help"><span>Uitleg</span><small>besturing</small></button>
@@ -510,6 +512,11 @@ export function showTitle({ setup = false, challenges = false, focus = null }: T
     </div>`;
     el.onclick = onHomeClick;
     el.oninput = el.onchange = el.onkeydown = null;
+    // Samen spelen kan alleen in de Claude-artifact: de knop verschijnt pas als de gedeelde opslag er is
+    togetherAvailable().then(ok => {
+      const button = el.querySelector<HTMLElement>('[data-t="together"]');
+      if (ok && button) button.hidden = false;
+    });
   };
   // Een nieuwe wereld of uitdaging beginnen: nieuwe wereld, meteen bewaren, titelscherm dicht
   const startGame = (opts: NewGameOptions) => {
@@ -553,6 +560,7 @@ export function showTitle({ setup = false, challenges = false, focus = null }: T
     else if (t.dataset.t === 'quick') quickGame();
     else if (t.dataset.t === 'challenges') openChallenges();
     else if (t.dataset.t === 'daily') openChallenges(DAILY);
+    else if (t.dataset.t === 'together') showTogether(el, { onBack: drawHome });
     else if (t.dataset.t === 'load') showLoadScreen({ onLoaded: leaveTitle, onClose: drawHome });
     else if (t.dataset.t === 'cont') continueGame();
   };
