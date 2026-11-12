@@ -24,17 +24,21 @@ T3.ShaderChunk.tonemapping_pars_fragment = T3.ShaderChunk.tonemapping_pars_fragm
 );
 
 // Kleurcorrectie: zachte schouder, iets meer contrast en kleur, een klein beetje verscherpen
-// (fijne details komen beter uit) en zacht donkere hoeken (vignet) voor diepte.
+// (fijne details komen beter uit) en zacht donkere hoeken (vignet) voor diepte. Daarbij warm licht en
+// koele schaduw (uSplit, sterker bij zonsopkomst en -ondergang) en 's nachts blauw maanlicht (uNight).
 const GradeShader = {
   uniforms: {
     tDiffuse: { value: null },
     uTexel: { value: new T3.Vector2() },
     uSharpen: { value: 0 },
     uShoulder: { value: 1 },
+    uNight: { value: 0 },
+    uSplit: { value: 1 },
   },
   vertexShader: `varying vec2 vUv;
     void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 uTexel; uniform float uSharpen; uniform float uShoulder;
+    uniform float uNight; uniform float uSplit;
     varying vec2 vUv;
     ${shoulder('softShoulder')}
     void main() {
@@ -50,6 +54,17 @@ const GradeShader = {
       c = (c - 0.5) * 1.07 + 0.5;                       // contrast
       float l = dot(c, vec3(0.299, 0.587, 0.114));
       c = mix(vec3(l), c, 1.12);                         // verzadiging
+      // Warm licht, koele schaduw: lichte delen een tikje warmer, donkere een tikje koeler
+      c += (l - 0.45) * 0.04 * uSplit * vec3(1.0, 0.3, -0.9);
+      // Maanlicht: 's nachts worden donkere, kleurloze delen (gras, muren, daken) blauwgrijs. Wat fel, warm
+      // of echt gekleurd is (ramen, lampen, vuur, teamkleuren, de groene selectiering) blijft zoals het is.
+      if (uNight > 0.0) {
+        float hi = max(c.r, max(c.g, c.b)), lo = min(c.r, min(c.g, c.b));
+        float keep = max(smoothstep(0.5, 0.85, hi), smoothstep(0.08, 0.25, c.r - c.b));
+        keep = max(keep, smoothstep(0.09, 0.15, hi - lo));
+        vec3 moon = vec3(l) * vec3(0.78, 0.9, 1.2) + vec3(0.0, 0.006, 0.022);
+        c = mix(c, moon, uNight * 0.55 * (1.0 - keep));
+      }
       vec2 d = vUv - 0.5;
       c *= 1.0 - dot(d, d) * 0.38;                       // vignet
       gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
@@ -160,6 +175,15 @@ export function resizePost(w: number, h: number, dpr: number) {
 export function setBloomDarkness(dk: number) {
   if (!bloom) return;
   bloom.threshold = on.hdr ? 1.35 - dk * 0.6 : 0.82;
+  // Hoe sterk het maanlicht in de kleurcorrectie is: 1 midden in de nacht (dan is dk 0,78).
+  // (grade bestaat altijd samen met bloom, zie build)
+  grade!.uniforms.uNight.value = Math.min(1, dk / 0.78);
+}
+
+/** Warm licht en koele schaduw: 1 overdag, sterker bij zonsopkomst en -ondergang (dusk 0..1). */
+export function setGradeTime(dusk: number) {
+  if (!grade) return;
+  grade.uniforms.uSplit.value = 1 + 0.8 * dusk;
 }
 
 export function renderFrame() {
