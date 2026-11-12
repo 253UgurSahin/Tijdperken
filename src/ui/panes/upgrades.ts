@@ -37,7 +37,7 @@ import {
 } from '../../game/renew';
 import { repairBuildings, repairCost } from '../../game/repair';
 import { blessingListHTML } from '../blessings';
-import { compareText, costHTML, esc, fmtShort } from '../format';
+import { compareText, costHTML, esc, fmtShort, theAge } from '../format';
 import { iconFor } from '../../render/icons';
 import { ico } from '../glyphs';
 import { setHTML, sigs } from '../header';
@@ -45,7 +45,7 @@ import { toast } from '../hud';
 import { $ } from '../../util/dom';
 
 // Volgende tijdperk als tekst, voor "volgende verbetering in de ..."
-const nextAgeName = () => (AGES[G.age + 1] ? 'de ' + AGES[G.age + 1].n.toLowerCase() : 'een later tijdperk');
+const nextAgeName = () => (AGES[G.age + 1] ? theAge(G.age + 1) : 'een later tijdperk');
 
 /** Wat er in één regel van het paneel staat. */
 interface RowParts {
@@ -126,11 +126,16 @@ function renewList(): Building[] {
   return G.bs.filter(b => renewTarget(b) !== null);
 }
 
+/**
+ * Gebouwen die bij Verbeteren horen: te verbeteren en niet verouderd. Een verouderd gebouw hoort bij Vernieuwen;
+ * het verbeteren zou weggegooid geld zijn, want vernieuwen zet het niveau weer op 1.
+ */
+const upgradable = (b: Building): boolean => canUpg(b) && renewTarget(b) === null;
+
 export function renderUpgrades() {
   // Een verouderd gebouw dat vernieuwd kan worden, staat bij Vernieuwen (niet meer bij Verbeteren)
   const renew = renewList(),
-    renewSet = new Set(renew),
-    up = G.bs.filter(b => canUpg(b) && !renewSet.has(b)),
+    up = G.bs.filter(upgradable),
     aff = up.filter(b => has(upgCost(b))),
     renewAff = renew.filter(b => has(renewCost(renewTarget(b)!))),
     roadCost = roadRenewCost(),
@@ -320,7 +325,7 @@ $('#upgrades').addEventListener('click', e => {
   if (t.dataset.ut) {
     // Alle gebouwen van deze soort verbeteren die je kunt betalen
     let n = 0;
-    for (const b of G.bs.filter(x => x.type === t.dataset.ut && canUpg(x))) if (upgrade(b, true)) n++;
+    for (const b of G.bs.filter(x => x.type === t.dataset.ut && upgradable(x))) if (upgrade(b, true)) n++;
     toast(
       n ? `${n} × ${B[t.dataset.ut].n.toLowerCase()} verbeterd.` : 'Te weinig grondstoffen.',
       n ? 'good' : 'bad',
@@ -354,7 +359,7 @@ $('#upgrades').addEventListener('click', e => {
   else if (t.dataset.g === 'all') {
     let n = 0;
     for (const b of G.bs
-      .filter(canUpg)
+      .filter(upgradable)
       .sort(
         (a, c) =>
           Object.values(upgCost(a)).reduce((x, y) => x + y, 0) -

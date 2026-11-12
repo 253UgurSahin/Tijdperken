@@ -122,7 +122,7 @@ export const VICTORIES: VictoryDef[] = [
       eyebrow: `${SURVIVE_NIGHTS} nachten overleefd`,
       title: 'Niets kon jullie breken.',
       story: f =>
-        `${f.place} hield ${SURVIVE_NIGHTS} nachten stand en bereikte de ${f.ageName.toLowerCase()}.`,
+        `${f.place} hield ${SURVIVE_NIGHTS} nachten stand en bereikte ${f.ageName.endsWith('tijdperk') ? 'het' : 'de'} ${f.ageName}.`,
     },
   },
   {

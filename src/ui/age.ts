@@ -17,10 +17,18 @@ import { sigs } from './header';
 import { screenEffect, showBanner, toast } from './hud';
 import { buildResBar } from './resources';
 import { ageTimeline } from './format';
+import { ageName } from '../data/scenarios';
 import { $ } from '../util/dom';
 import { retiredIn } from '../data/succession';
 import { UNITS } from '../data/units';
 import { startAgeCinematic } from '../render/cinematic';
+
+/** "De IJzertijd breekt aan.", "Het Dronetijdperk breekt aan.", maar "De Middeleeuwen breken aan." */
+function ageArrives(age: number): string {
+  const name = ageName(age);
+  const plural = AGES[age].n.endsWith('eeuwen');
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)} ${plural ? 'breken' : 'breekt'} aan.`;
+}
 
 // Naar het volgende tijdperk, als je alles hebt wat ervoor nodig is
 export function ageUp() {
@@ -46,7 +54,7 @@ export function enterNextAge() {
   const nu = G.bs.filter(canUpg).length;
   const old = retiredIn(G.age, G.people).map(k => (B[k] || UNITS[k]).n.toLowerCase());
   toast(
-    `De ${AGES[G.age].n.toLowerCase()} breekt aan.${nr.length ? ` Ontdekt: ${nr.join(' en ')}.` : ''} Nieuwe verbeteringen: werktuigen, wapens${nu ? ` en ${nu} gebouwen` : ''}.${old.length ? ` Verouderd: ${old.join(', ')}.` : ''}`,
+    `${ageArrives(G.age)}${nr.length ? ` Ontdekt: ${nr.join(' en ')}.` : ''} Nieuwe verbeteringen: werktuigen, wapens${nu ? ` en ${nu} gebouwen` : ''}.${old.length ? ` Verouderd: ${old.join(', ')}.` : ''}`,
     'age',
   );
   computeAvail();
