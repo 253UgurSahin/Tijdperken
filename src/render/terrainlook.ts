@@ -270,9 +270,11 @@ const GROUND_COLOR = `
     float bare = max(max(dirtW, greyW), paintW) * (1.0 - smoothstep(0.1, 0.3, vWPos.y));
     col *= 1.0 - 0.15 * bare * uSnowCover;
     cover *= 1.0 - 0.85 * bare;
-    // Sneeuw is grijzer waar de grond donker is: zo blijft je eigen land lichter dan de wildernis
-    float baseLum = dot(base, vec3(0.3, 0.59, 0.11));
-    vec3 snowCol = vec3(0.86, 0.9, 0.97) * clamp(0.45 + baseLum * 1.5, 0.72, 1.0)
+    // Sneeuw is grijzer in de wildernis, zodat je eigen land lichter blijft. De wildernis is grauw en donker
+    // getekend (weinig kleur en niet licht); op je eigen land is alleen de donkere bosgrond een tikje grijzer.
+    float paintLum = dot(paint, vec3(0.3, 0.59, 0.11));
+    float wild = (1.0 - smoothstep(0.08, 0.13, spread)) * (1.0 - smoothstep(0.35, 0.5, paintLum));
+    vec3 snowCol = vec3(0.86, 0.9, 0.97) * mix(clamp(0.6 + paintLum * 1.2, 0.85, 1.0), 0.72, wild)
       * (0.93 + (dA.g * 0.6 + dB.g * 0.4) * 0.07 + macro * 0.06);
     col = mix(col, snowCol, cover * 0.9);
   }
