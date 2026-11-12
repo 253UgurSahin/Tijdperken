@@ -375,7 +375,10 @@ export function buildTerrain() {
     // Midden in een berg: extra hobbels, zodat de toppen grilliger worden en er rotswanden ontstaan
     const crag = rc === n ? (hash2(x, z, 78) - 0.4) * 0.9 : 0;
     if (rc) p.setY(k, (rise / n) * (rc === n ? 1 : 0.4) + crag);
-    else p.setY(k, wc === n && n ? -0.55 : wc ? (-0.32 * wc) / n : 0);
+    // Een oeverpunt ligt altijd iets ónder het water (dat ligt op −0,16, zie water.ts). Lag het er precies op
+    // of boven, dan vochten land en water om dezelfde pixels (flikkeren) en verdween een smalle of schuine
+    // rivier in blokjes onder de oever.
+    else p.setY(k, wc === n && n ? -0.55 : wc ? -0.2 - (0.24 * (wc - 1)) / Math.max(1, n - 1) : 0);
     heights[z * (W + 1) + x] = p.getY(k);
   }
   g.computeVertexNormals();
