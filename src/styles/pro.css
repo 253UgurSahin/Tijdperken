@@ -1,0 +1,311 @@
+/* Tijdperken — het strakke ontwerp. Eén ontwerpsysteem over de hele interface: donkere, licht doorschijnende
+   panelen met dunne randen, weinig afronding, geen harde schaduwen of papiertextuur. De kleur van het tijdperk
+   (--acc, gezet door ui/age.ts) blijft het enige accent. Dit bestand komt na alle andere: het zet de bouwstenen
+   (kleuren, randen, letters) en strijkt de onderdelen glad die daar niet vanzelf mee meegaan. */
+
+:root {
+  color-scheme: dark;
+
+  /* Vlakken, van diep naar hoog */
+  --paper: #1d1b18; /* paneel */
+  --paper-2: #181614;
+  --paper-hi: #2a2723; /* knop of kaartje op een paneel */
+  --well: #141210; /* verzonken vak */
+  --paper-edge: rgba(0, 0, 0, 0.3); /* (vroeger de harde papierschaduw; nu nauwelijks zichtbaar) */
+
+  /* Tekst, van sterk naar zacht */
+  --ink: #ece6da;
+  --ink-2: #c9c1b2;
+  --ink-3: #9c9485;
+  --ink-4: #7a7365;
+  --rule: rgba(255, 255, 255, 0.08);
+  --rule-2: rgba(255, 255, 255, 0.14);
+
+  /* Accent: lichter op donker, zodat accenttekst leesbaar blijft */
+  --acc-ink: color-mix(in srgb, var(--acc) 72%, #fff);
+  --acc-edge: color-mix(in srgb, var(--acc) 70%, #000);
+  --acc-soft: color-mix(in srgb, var(--acc) 18%, var(--paper));
+
+  --good: #6cc46a;
+  --bad: #ef6b5b;
+  --warn: #e3a447;
+  --team: #6f9bea;
+
+  --grain: none;
+  --panel: linear-gradient(180deg, rgba(36, 33, 29, 0.94), rgba(24, 22, 19, 0.94));
+  --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.38), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  --tile-shadow: none;
+  --r: 8px;
+  --r-sm: 6px;
+  --hairline: 1px solid rgba(255, 255, 255, 0.09);
+
+  /* Iets lagere onderbalk: meer wereld, minder leeg paneel */
+  --barh: 196px;
+}
+
+html,
+body {
+  background: #12100e;
+  /* Fraunces zonder de zachte, eigenwijze vormen: rustiger en zakelijker */
+  font-variation-settings:
+    'SOFT' 0,
+    'WONK' 0;
+  font-feature-settings: 'tnum' 1; /* cijfers even breed: getallen springen niet heen en weer */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Panelen ---- */
+.hud,
+.sheet,
+#title .tw {
+  background: var(--panel);
+  color: var(--ink);
+  border: var(--hairline);
+  border-radius: var(--r);
+  box-shadow: var(--card-shadow);
+}
+/* Het accent is een dun lijntje bovenin, geen dikke balk */
+.hud,
+.sheet {
+  border-top: var(--hairline);
+}
+.hud::after,
+.sheet::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  border-radius: var(--r) var(--r) 0 0;
+  background: linear-gradient(90deg, var(--acc), transparent 55%);
+  opacity: 0.7;
+  pointer-events: none;
+}
+.sheet {
+  position: relative;
+}
+/* Geen plakband en geen golflijn meer */
+#title .tw::before,
+#title .logo::after {
+  display: none;
+}
+
+/* ---- Knoppen: vlak, een dunne rand, rustig oplichten ---- */
+button {
+  background: var(--paper-hi);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--r-sm);
+  box-shadow: none;
+  color: var(--ink);
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+}
+button:hover:not(:disabled) {
+  background: #34302a;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+button:active:not(:disabled) {
+  transform: none;
+  background: #25221e;
+  box-shadow: none;
+}
+button:focus-visible,
+canvas:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+.quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-3);
+}
+.quiet:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: transparent;
+  color: var(--ink);
+}
+.primary,
+.primary:active:not(:disabled) {
+  background: var(--acc);
+  border-color: transparent;
+  color: var(--on-acc);
+  font-weight: 650;
+  box-shadow: none;
+}
+.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--acc) 85%, #fff);
+  border-color: transparent;
+}
+
+/* ---- Letters: koppen recht en strak, geen schuine aantekeningen ---- */
+.eyebrow {
+  font-family: var(--f-body);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--acc-ink);
+}
+h1,
+h2,
+h3 {
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+.sect {
+  font-family: var(--f-body);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 6px;
+}
+.sect span {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ---- Balken en vakjes ---- */
+.bar {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+/* ---- Vensters ---- */
+#modal {
+  background: rgba(8, 7, 6, 0.55);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+/* Scrollbalken in de panelen: dun en donker */
+* {
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+/* ---- Letters: één strakke letter voor de hele interface ----
+   Overal waar de sierletter (--f-display) of de typemachineletter (--f-mono) stond, komt nu de gewone letter.
+   De sierletter (--f-title) blijft voor een paar merkmomenten: logo, menutitels, venstertitels en de banner bij
+   een nieuw tijdperk. De typemachineletter (--f-code) alleen voor zaadcodes en toetsen. */
+:root {
+  --f-title: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+  --f-code: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --f-display: var(--f-body);
+  --f-mono: var(--f-body);
+}
+/* Geen schuine aantekeningen meer (behalve echte nadruk) */
+body *:not(em) {
+  font-style: normal !important;
+}
+#title .thome .logo,
+.phome .pplace,
+.titem .tl,
+.sheet h1,
+#title .tw h1,
+#banner .t,
+.endpts {
+  font-family: var(--f-title);
+}
+kbd,
+.keys kbd,
+.chcode,
+.seedrow input,
+#fps {
+  font-family: var(--f-code);
+}
+/* Kleine kopjes die vroeger schuin stonden: nu rustige hoofdletters */
+.agehd,
+.ngl,
+.wgl,
+.chsep,
+.usub,
+#event .ek,
+.achpop small,
+.endhead small,
+#title .tag,
+.thome .tag,
+.phome .tag,
+.bless .bcat,
+#ageToggle .mt {
+  font-size: 11px !important;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--acc-ink);
+}
+#title .thome .tag,
+.phome .tag {
+  font-size: 12px !important;
+  letter-spacing: 0.16em;
+}
+
+/* ---- Bouwknoppen en opdrachtknoppen: donkere tegels ---- */
+.cb,
+.gb {
+  background: var(--paper-hi);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--r-sm);
+  box-shadow: none;
+}
+.cb:hover:not(:disabled),
+.gb:hover:not(:disabled) {
+  background: #34302a;
+  border-color: color-mix(in srgb, var(--acc) 60%, transparent);
+  transform: none;
+  box-shadow: none;
+}
+.gb:active:not(:disabled),
+.cb:active:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+  background: #25221e;
+}
+.gb img,
+.cb img {
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
+}
+/* Portret van wat je geselecteerd hebt: een dunne ring in plaats van een dikke */
+.port {
+  background: radial-gradient(circle at 50% 35%, #3a352e, var(--well));
+  border-width: 1.5px !important;
+  box-shadow: none !important;
+}
+
+/* ---- Onderbalk op een breed scherm: links wat je geselecteerd hebt, rechts bouwen en kaart, en daartussen
+   gewoon de wereld (een paneel dat de hele breedte vult, is vooral leeg) ---- */
+@media (min-width: 1200px) and (min-height: 561px) {
+  #selPanel {
+    flex: 0 1 620px;
+  }
+  #cmdPanel {
+    margin-left: auto;
+  }
+}
+
+/* Kaartjes met een gekleurde bovenrand: dun, niet dik */
+#bigMap #miniBox,
+#hovertip,
+#banner .in {
+  border: var(--hairline);
+  border-top: 2px solid var(--acc);
+}
+.bless,
+.bless:hover:not(:disabled) {
+  border: var(--hairline);
+  border-top: 2px solid var(--acc);
+  border-radius: var(--r);
+  box-shadow: var(--card-shadow);
+}
+.bless:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--acc) 55%, transparent);
+  border-top-color: var(--acc);
+  background: linear-gradient(180deg, rgba(48, 44, 38, 0.96), rgba(30, 28, 24, 0.96));
+}
