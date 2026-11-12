@@ -53,6 +53,7 @@ import './render/sync';
 import './render/terrain';
 import './input/cursors';
 import './input/input';
+import './input/nozoom';
 import './input/selection';
 import './audio/sound';
 import './ui/format';

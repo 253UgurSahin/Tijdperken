@@ -541,6 +541,12 @@
     min-width: 0;
     padding: 4px 6px 6px;
   }
+  /* Niets geselecteerd: het bouwpaneel rechts en niet breder dan nodig, zodat je links de wereld ziet */
+  body:not(.insp) #cmdPanel {
+    flex: 0 1 auto;
+    max-width: min(100%, 560px);
+    margin-left: auto;
+  }
   .cats button {
     min-height: 30px;
     padding: 2px 5px;

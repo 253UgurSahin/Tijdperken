@@ -309,7 +309,8 @@ cv.addEventListener(
   e => {
     e.preventDefault();
     const [sx, sy] = local(e),
-      dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1); // muiswiel in regels of pagina's
+      // Muiswiel in regels of pagina's; knijpen op een touchpad (Ctrl) geeft kleine stapjes, dus die tellen zwaarder
+      dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1) * (e.ctrlKey ? 6 : 1);
     zoomTo((cam.tz ?? cam.z) * Math.exp(dy * (SET.invertZoom ? 0.0015 : -0.0015)), sx, sy);
   },
   { passive: false },

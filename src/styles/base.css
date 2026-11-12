@@ -415,3 +415,15 @@ h1 {
 .hudlayer > * {
   z-index: 10;
 }
+
+/* Geen browserzoom (zie input/nozoom.ts): schuiven in panelen mag, knijpen en dubbeltikken om te zoomen niet.
+   De kaart zelf (canvas) heeft touch-action: none; daar doet het spel alles. */
+html,
+body,
+body * {
+  touch-action: pan-x pan-y;
+}
+#cv,
+canvas {
+  touch-action: none;
+}
