@@ -1,9 +1,11 @@
 // Het water: ondiep turquoise bij de kust, diep blauw verder weg, schuim langs de oever,
-// golfjes die naar het strand rollen en glinsteringen van de zon.
+// golfjes die naar het strand rollen, glinsteringen en lichtspel van de zon, en kringen als het regent.
 import * as T3 from 'three';
 import { H, W, onMapSize } from '../config';
 import { FAR_DIST, camDist } from './camera';
-import { S3 } from './scene';
+import { S3, sun } from './scene';
+import { G } from '../game/state';
+import { season } from '../game/time';
 import { DETAIL } from './textures';
 import { TER, ter } from '../world/world';
 
@@ -127,11 +129,16 @@ export const WMAT = new T3.MeshStandardMaterial({
   normalMap: WNORM,
   normalScale: new T3.Vector2(0.3, 0.3),
 });
+// Zon op het water (0 = nacht, 1 = volle zon) en hoe hard het regent op het water (0..1): zie animateWater
+const SUN_LIT = { value: 1 },
+  RAIN = { value: 0 };
 WMAT.onBeforeCompile = shader => {
   shader.uniforms.uDepth = DEPTH;
   shader.uniforms.uDetail = { value: DETAIL };
   shader.uniforms.uTime = TIME;
   shader.uniforms.uMapSize = MAP_SIZE;
+  shader.uniforms.uSunLit = SUN_LIT;
+  shader.uniforms.uRain = RAIN;
   shader.vertexShader =
     'varying vec3 vWPos;\n' +
     shader.vertexShader.replace(
@@ -141,17 +148,22 @@ WMAT.onBeforeCompile = shader => {
     );
   shader.fragmentShader =
     'uniform sampler2D uDepth;\nuniform sampler2D uDetail;\nuniform float uTime;\nuniform vec2 uMapSize;\n' +
-    'varying vec3 vWPos;\n' +
+    'uniform float uSunLit;\nuniform float uRain;\nvarying vec3 vWPos;\n' +
     shader.fragmentShader
       .replace('#include <color_fragment>', '#include <color_fragment>\n' + WATER_COLOR)
-      // Twee golfpatronen die elk een andere kant op drijven: minder herhaling, levendiger glinsteren
+      // Twee golfpatronen die elk een andere kant op drijven: minder herhaling, levendiger glinsteren.
+      // De regel met mapN zit ín het stukje normal_fragment_maps, dus dat stukje vullen we eerst zelf in
+      // (anders vindt de vervanging niets en gebeurt er stilletjes niets).
       .replace(
-        'vec3 mapN = texture2D( normalMap, vUv ).xyz * 2.0 - 1.0;',
-        `vec3 mapN = texture2D( normalMap, vUv ).xyz * 2.0 - 1.0;
-        #ifdef FINE_DETAIL
-          vec3 mapN2 = texture2D( normalMap, vUv * 2.3 + vec2(uTime * -0.02, uTime * 0.03) ).xyz * 2.0 - 1.0;
-          mapN = normalize( vec3( mapN.xy + mapN2.xy, mapN.z * mapN2.z ) );
-        #endif`,
+        '#include <normal_fragment_maps>',
+        T3.ShaderChunk.normal_fragment_maps.replace(
+          'vec3 mapN = texture2D( normalMap, vUv ).xyz * 2.0 - 1.0;',
+          `vec3 mapN = texture2D( normalMap, vUv ).xyz * 2.0 - 1.0;
+          #ifdef FINE_DETAIL
+            vec3 mapN2 = texture2D( normalMap, vUv * 2.3 + vec2(uTime * -0.02, uTime * 0.03) ).xyz * 2.0 - 1.0;
+            mapN = normalize( vec3( mapN.xy + mapN2.xy * 0.6, mapN.z * mapN2.z ) );
+          #endif`,
+        ),
       );
 };
 WMAT.customProgramCacheKey = () => 'water-shore';
@@ -159,9 +171,9 @@ WMAT.customProgramCacheKey = () => 'water-shore';
 // Kleur en doorzichtigheid van het water (GLSL)
 const WATER_COLOR = `
   float depth = texture2D(uDepth, vWPos.xz / uMapSize).r;
-  vec3 shallow = vec3(0.2, 0.5, 0.52),
-    deep = vec3(0.12, 0.3, 0.42);
-  vec3 waterCol = mix(shallow, deep, smoothstep(0.05, 0.75, depth));
+  vec3 shallow = vec3(0.22, 0.54, 0.54),
+    deep = vec3(0.11, 0.3, 0.42);
+  vec3 waterCol = mix(shallow, deep, smoothstep(0.0, 0.5, depth));
   float n = texture2D(uDetail, vWPos.xz * 0.31 + vec2(uTime * 0.017, uTime * 0.011)).g;
   // Schuimrand langs de oever, die zacht heen en weer schuift
   float edge = depth + sin(uTime * 1.1 + vWPos.x * 0.7 + vWPos.z * 0.5) * 0.012;
@@ -173,15 +185,38 @@ const WATER_COLOR = `
     max(texture2D(uDepth, dUv + vec2(0.0, o.y)).r, texture2D(uDepth, dUv - vec2(0.0, o.y)).r)
   );
   foam *= smoothstep(0.03, 0.12, around);
-  // Golfjes die naar het strand rollen (in stukjes, zodat het geen strakke lijnen worden)
   #ifdef FINE_DETAIL
-    float roll = smoothstep(0.88, 1.0, sin(depth * 30.0 + uTime * 1.6 + n * 3.0));
-    foam = max(foam, roll * smoothstep(0.3, 0.08, depth) * smoothstep(0.45, 0.65, n) * 0.55);
+    // Golfjes die naar het strand rollen. Ze breken op de gladde, grove ruis (a) in stukjes: de fijne ruis
+    // gaf ruis als een tv zonder zender. Ver weg (lijnen dichter dan een pixel) vallen ze weg.
+    float br = texture2D(uDetail, vWPos.xz * 0.12 + vec2(uTime * 0.01, 0.0)).a;
+    float roll = smoothstep(0.88, 1.0, sin(depth * 30.0 + uTime * 1.6 + br * 3.0))
+      * smoothstep(0.03, 0.08, depth) * smoothstep(0.3, 0.12, depth) * smoothstep(0.4, 0.6, br)
+      * clamp(1.0 - fwidth(depth * 30.0) * 1.5, 0.0, 1.0);
+    foam = max(foam, roll * 0.55);
+    // Lichtspel op de bodem van ondiep water: waar twee drijvende aderpatronen elkaar kruisen, een lichte lijn
+    float ca = texture2D(uDetail, vWPos.xz * 0.23 + vec2(uTime * 0.012, uTime * 0.007)).b;
+    float cb = texture2D(uDetail, vWPos.xz * 0.19 + vec2(uTime * -0.008, uTime * 0.011)).b;
+    float caust = pow(clamp(1.0 - abs(ca - cb) * 7.0, 0.0, 1.0), 6.0);
+    // Van ver weg (lijntjes kleiner dan een pixel) zou het flikkeren: dan zachtjes weg
+    caust *= clamp(1.5 - fwidth(vWPos.x) * 10.0, 0.0, 1.0);
+    waterCol += vec3(0.2, 0.26, 0.22) * caust * smoothstep(0.4, 0.05, depth) * (1.0 - foam) * uSunLit;
   #endif
+  // Regen: kringen die op het water uitdijen (per vakje één druppel op een eigen moment)
+  if (uRain > 0.01) {
+    vec2 rp = vWPos.xz * 1.6, cell = floor(rp);
+    float h = fract(sin(dot(cell, vec2(127.1, 311.7))) * 43758.55);
+    float t = fract(uTime * 0.8 + h);
+    vec2 drop = cell + 0.3 + 0.4 * fract(vec2(h * 13.7, h * 71.3));
+    float ring = smoothstep(0.06, 0.0, abs(length(rp - drop) - t * 0.42)) * (1.0 - t);
+    // Ver weg (een vakje kleiner dan een paar pixels) worden de kringen een waas: dan weglaten
+    ring *= clamp(1.4 - fwidth(rp.x) * 4.0, 0.0, 1.0);
+    foam = max(foam, ring * uRain * 0.7);
+  }
   diffuseColor.rgb = mix(waterCol, vec3(0.82, 0.88, 0.88), foam);
   diffuseColor.a = mix(0.68, 0.92, smoothstep(0.0, 0.5, depth)) * opacity / 0.86 + foam * 0.35;
 `;
 
+let lastWaterT = 0;
 /** Laat de golfjes langzaam drijven (aangeroepen bij elk beeldje). */
 export function animateWater(t: number) {
   WNORM.offset.set(t * 0.012, t * 0.007);
@@ -191,6 +226,14 @@ export function animateWater(t: number) {
   const near = Math.min(1, FAR_DIST / camDist()),
     k = near * near * 0.3;
   WMAT.normalScale.set(k, k);
+  // Lichtspel en regenkringen komen en gaan zacht, in een paar seconden (niet knipperen bij bliksem)
+  const dt = Math.max(0, Math.min(0.2, t - lastWaterT)),
+    ease = 1 - Math.exp(-dt * 0.8);
+  lastWaterT = t;
+  const sunTarget = Math.max(0, Math.min(1, (sun.intensity - 0.25) / 0.55)),
+    rainTarget = G.rain && season().n !== 'Winter' ? 1 : 0;
+  SUN_LIT.value += (sunTarget - SUN_LIT.value) * ease;
+  RAIN.value += (rainTarget - RAIN.value) * ease;
 }
 
 // Het wateroppervlak ligt alleen waar water is (plus een rand eromheen, en de zee buiten de kaart).

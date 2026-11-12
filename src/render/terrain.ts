@@ -1,7 +1,7 @@
 // De grond: kleuren per tegel, de vorm van het land en de rand van je gebied.
 // (Fijne details en rotswanden: terrainlook.ts · water: water.ts)
 import * as T3 from 'three';
-import { CN, H, W, onMapSize } from '../config';
+import { CN, CS, H, W, onMapSize } from '../config';
 import { G } from '../game/state';
 import { mat } from './kit';
 import { R3, S3 } from './scene';
@@ -159,11 +159,45 @@ function roadTierAt(pieces: RoadPiece[], u: number, v: number, half: number): nu
   return best;
 }
 
+// Zo breed (in tegels) is de zachte overgang van je eigen land naar de wildernis
+const WILD_RAMP = 3;
+const NO_CHUNKS: number[] = [];
+/** De eigen gebieden (als [x0, y0, x0, y0, ...] in tegels) rond tegel (x, y), op hoogstens WILD_RAMP tegels afstand. */
+function ownedChunksNear(x: number, y: number): number[] {
+  const cx = x >> 4,
+    cy = y >> 4;
+  let list = NO_CHUNKS;
+  for (let ny = cy - 1; ny <= cy + 1; ny++)
+    for (let nx = cx - 1; nx <= cx + 1; nx++) {
+      if (nx < 0 || ny < 0 || nx >= CN || ny >= CN || G.unl[ny * CN + nx] !== 1) continue;
+      const x0 = nx * CS,
+        y0 = ny * CS,
+        // Afstand van de rand van deze tegel tot dat gebied, in hele tegels
+        gapX = Math.max(0, x0 - (x + 1), x - (x0 + CS)),
+        gapY = Math.max(0, y0 - (y + 1), y - (y0 + CS));
+      if (Math.hypot(gapX, gapY) > WILD_RAMP) continue;
+      if (list === NO_CHUNKS) list = [];
+      list.push(x0, y0);
+    }
+  return list;
+}
+/** Hoeveel wildernis-kleur punt (u, v) krijgt: 0 tegen je eigen land aan, 1 vanaf WILD_RAMP tegels ervandaan. */
+function wildFade(owned: number[], u: number, v: number): number {
+  let best = WILD_RAMP;
+  for (let k = 0; k < owned.length; k += 2) {
+    const dx = Math.max(0, owned[k] - u, u - (owned[k] + CS)),
+      dy = Math.max(0, owned[k + 1] - v, v - (owned[k + 1] + CS));
+    best = Math.min(best, Math.hypot(dx, dy));
+  }
+  const t = best / WILD_RAMP;
+  return t * t * (3 - 2 * t);
+}
+
 export function paintTile(x: number, y: number) {
   const i = y * W + x,
     mine = G.unl[(y >> 4) * CN + (x >> 4)] === 1,
     own = mine ? 0 : ownerAt(x, y), // land van een rivaal (zijn nummer), of 0
-    lk = !mine && !own, // wildernis: die tekenen we donkerder
+    lk = !mine && !own, // wildernis: die tekenen we stiller (minder kleur, iets donkerder)
     tint = own ? rivalRGB(own) : null,
     d = timg!.data,
     X0 = x * TS,
@@ -172,6 +206,8 @@ export function paintTile(x: number, y: number) {
   // De wegen die over deze tegel kunnen lopen (meestal geen: dan slaan we het hele zoeken over)
   const pieces = roadPieces(x, y),
     half = 0.5 - EDGE / TS; // een weg is een tegel breed, min een grasrandje aan elke kant
+  // Stukken eigen land vlak bij deze wildernistegel (meestal geen: dan geen overgang uitrekenen)
+  const nearOwned = lk ? ownedChunksNear(x, y) : NO_CHUNKS;
   for (let py = 0; py < TS; py++)
     for (let px = 0; px < TS; px++) {
       groundAt(x + (px + 0.5) / TS - 0.5, y + (py + 0.5) / TS - 0.5, px3);
@@ -214,10 +250,16 @@ export function paintTile(x: number, y: number) {
         }
       }
       if (lk) {
-        const m = (r + g + b) / 3;
-        r = (r * 0.35 + m * 0.25) * 0.62 + 14;
-        g = (g * 0.35 + m * 0.25) * 0.62 + 18;
-        b = (b * 0.35 + m * 0.25) * 0.62 + 24;
+        // Wildernis: halve kleur en wat donkerder, met een koel zweempje blauw (stille natuur, geen as)
+        const m = (r + g + b) / 3,
+          fr = (m + (r - m) * 0.5) * 0.7,
+          fg = (m + (g - m) * 0.5) * 0.7,
+          fb = (m + (b - m) * 0.5) * 0.7 + 6;
+        // Vlak naast je eigen land loopt dat over 3 tegels zacht in elkaar over
+        const k = nearOwned.length ? wildFade(nearOwned, x + (px + 0.5) / TS, y + (py + 0.5) / TS) : 1;
+        r += (fr - r) * k;
+        g += (fg - g) * k;
+        b += (fb - b) * k;
       }
       // Land van een rivaal: bewoond (dus niet donker), met een zweem van zijn kleur
       if (tint) {
@@ -426,6 +468,8 @@ function terrainPiece(g: T3.BufferGeometry, x0: number, z0: number): T3.Mesh {
   piece.computeBoundingSphere();
   const m = new T3.Mesh(piece, TMAT);
   m.receiveShadow = true;
+  // Na de gebouwen, bomen en rotsen tekenen: dan slaat de videokaart de grond eronder over (early-Z)
+  m.renderOrder = 1;
   return m;
 }
 // De rand van de kaart: een donkere wand omlaag aan alle vier de kanten

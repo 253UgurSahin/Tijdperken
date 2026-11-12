@@ -324,7 +324,7 @@ const _m4 = new T3.Matrix4(),
   _s = new T3.Vector3(),
   _e = new T3.Euler(),
   _c = new T3.Color(),
-  LOCKED = new T3.Color(0.5, 0.52, 0.56);
+  LOCKED = new T3.Color(0.68, 0.7, 0.76);
 // Alleen bronnen in en rond het beeld worden getekend: op een grote kaart scheelt dat veel.
 // Het getekende stuk is het beeld op de grond (de vier hoeken), ruim naar buiten opgerekt. Pas als het beeld
 // daar buiten komt (schuiven, zoomen, draaien), zetten we alles opnieuw neer (zie nodesNeedUpdate).
