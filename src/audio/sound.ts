@@ -16,6 +16,9 @@ export let AC: AudioContext | null = null,
 const ALERTS = new Set(['alarm', 'raidend', 'meteor', 'bad', 'boss']);
 const UI_SOUNDS = new Set(['tick', 'select']);
 function ac() {
+  // Browsers laten geluid pas toe na een klik of toets. Daarvoor niets aanmaken: anders volgt er bij elk
+  // geluidje een waarschuwing en stapelen de tonen zich op tot de eerste klik.
+  if (!AC && navigator.userActivation && !navigator.userActivation.hasBeenActive) return null;
   if (!AC) {
     try {
       AC = new (
@@ -295,7 +298,9 @@ function unlockAudio() {
   if (!sndOn) return;
   const a = ac();
   if (a) out(); // (ook de hoofduitgang alvast, zodat de muziek meteen kan)
-  if (a && a.state === 'running') for (const ev of UNLOCK_EVENTS) removeEventListener(ev, unlockAudio);
+  if (a && a.state === 'running')
+    for (const ev of UNLOCK_EVENTS) removeEventListener(ev, unlockAudio, { capture: true });
 }
 const UNLOCK_EVENTS = ['pointerdown', 'pointerup', 'touchend', 'keydown'] as const;
-for (const ev of UNLOCK_EVENTS) addEventListener(ev, unlockAudio, { passive: true });
+// capture: ook een klik die een venster of knop verder tegenhoudt (stopPropagation), zet het geluid aan
+for (const ev of UNLOCK_EVENTS) addEventListener(ev, unlockAudio, { passive: true, capture: true });
