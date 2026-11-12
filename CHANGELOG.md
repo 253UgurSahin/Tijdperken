@@ -3,6 +3,17 @@
 Alle wijzigingen uit de "wereldwijde hit"-ronde (analyse → bugfixes → techniek → gameplay → polish), in gewone
 taal. Per bug: wat er misging, hoe het is opgelost en hoe dat is gecontroleerd. Nieuwste bovenaan.
 
+## Versie 0.5.0 (november 2026)
+
+- **Nieuw hoofdmenu in game-stijl:** de wereld over het hele scherm, links een groot logo en één lijst met keuzes
+  (aanwijzen geeft een gloeiend streepje en de toelichting; pijltjes en Enter werken). Snel spel, Nieuwe wereld,
+  Uitdagingen en Wereld van de dag staan samen onder **Nieuw spel**. Het pauzemenu heeft dezelfde stijl.
+- **Geen clipping meer bij water:** oevers lagen even hoog als het water of erboven, waardoor smalle en schuine
+  rivieren in blokjes verdwenen en de rand flikkerde. Rivieren lopen nu door, met glooiende oevers.
+- **Minder haperen:** minder pixels per kwaliteitsstand (grote schermen worden verscherpt opgeschaald), de
+  automatische kwaliteit reageert sneller, en achter een geopend venster wordt de wereld maar 30 keer per seconde
+  getekend.
+
 ## Versie 0.4.0 (november 2026)
 
 Meer basisbouw, meer spelgevoel, schermen van telefoon tot 5K2K, en voor het eerst samen spelen.
