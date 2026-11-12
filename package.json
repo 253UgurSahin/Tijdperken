@@ -1,8 +1,8 @@
 {
   "name": "tijdperken",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Real-time strategiespel in de browser: van de steentijd naar het dronetijdperk.",
+  "description": "Real-time strategiespel in de browser: van de steentijd naar het sterrentijdperk.",
   "type": "module",
   "scripts": {
     "dev": "vite",

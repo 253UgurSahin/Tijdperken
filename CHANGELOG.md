@@ -3,6 +3,32 @@
 Alle wijzigingen uit de "wereldwijde hit"-ronde (analyse → bugfixes → techniek → gameplay → polish), in gewone
 taal. Per bug: wat er misging, hoe het is opgelost en hoe dat is gecontroleerd. Nieuwste bovenaan.
 
+## Versie 0.3.0 (november 2026)
+
+Het spel staat nu in deze repository (eerder `Tijdperk`), met de hele geschiedenis erbij. Deze ronde: een
+controle op bugs, en wat kleine technische verbeteringen.
+
+- **Alles verbeteren gaf geld uit aan verouderde gebouwen:** de knop (en Verbeteren per soort) verbeterde ook
+  hutten en andere oude gebouwen die niet in de lijst stonden. Bij vernieuwen gaat hun niveau terug naar 1, dus dat
+  geld was weg, en het ging af van wat je voor de getoonde gebouwen nodig had. Nu telt dezelfde lijst als je ziet.
+  _Gecontroleerd:_ in de browser een hut uit de steentijd in de Middeleeuwen: wel te vernieuwen, niet meer te
+  verbeteren.
+- **Vijanden waren na laden zwakker of sterker:** kampbewakers kwamen terug met de schade van een gewoon kamp (een
+  kamp van niveau 5 sloeg daarna 24% zachter), en soldaten van een rivaal kregen de wapens van het tijdperk van nu.
+  De schade wordt nu bewaard. Een bewaker die net gesneuveld was, wordt niet meer bewaard (hij kon twee keer sterven
+  en twee keer buit geven). _Gecontroleerd:_ opslaan en laden in de browser, schade voor en na gelijk.
+- **Een eis ontlopen door te laden:** een openstaand bericht van een rivaal (of de handelaar) verdween bij laden.
+  Het blijft nu staan tot het verloopt; is de rivaal er niet meer, dan vervalt het.
+- **Torens en stamhuis toonden verkeerde getallen:** het infopaneel en de verbeterkaart lieten de basisschade en het
+  basisbereik zien. Het stamhuis in het Sterrentijdperk liet 6 schade zien, maar deed er 30. Nu rekenen spel,
+  infopaneel en verbeterkaart met dezelfde formule.
+- **Taal:** "De middeleeuwen breekt aan" wordt "De Middeleeuwen breken aan", "de dronetijdperk" wordt "het
+  Dronetijdperk" (melding bij een nieuw tijdperk, het paneel Verbeteren en het eindscherm).
+- **Geluid:** voor de eerste klik wordt er geen audio meer aangemaakt (dat gaf een reeks waarschuwingen en
+  opgestapelde tonen), en ook een klik in een venster zet het geluid aan.
+- **Sneller laden na een update (GitHub Pages):** three.js staat in een eigen bestand, zodat de browser het bewaart
+  als alleen de spelcode verandert.
+
 ## Daarna
 
 - **Vernieuwen in het paneel Verbeteren:** een verouderd gebouw (hut, wachttoren, kampvuur, ...) staat niet meer
