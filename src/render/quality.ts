@@ -75,7 +75,7 @@ export const LEVELS: Record<string, QualityLevel> = {
   },
 };
 const ORDER = ['low', 'mid', 'high'];
-const COARSE = matchMedia('(pointer:coarse)').matches; // telefoon/tablet: start een stapje lager
+export const COARSE = matchMedia('(pointer:coarse)').matches; // telefoon/tablet: start een stapje lager
 
 let tooHeavy = '',
   tooHeavyAt = 0;

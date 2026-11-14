@@ -46,6 +46,16 @@ import { showLoadScreen, showSaveScreen } from './saveslots';
 import { $ } from '../util/dom';
 import { showTogether, togetherAvailable } from './together';
 import { LEVELS, setQuality } from '../render/quality';
+import {
+  currentTitleView,
+  forgetPlayCamera,
+  savedPlayCamera,
+  setTitleView,
+  withPlayCamera,
+} from '../render/camera';
+import type { PlayCamera } from '../render/camera';
+import { startGlide } from '../render/cinematic';
+import { cam } from '../render/scene';
 
 let prevSpeed = 1;
 // Wat er moet gebeuren als het open venster dichtgaat (op welke manier dan ook), of null
@@ -477,11 +487,21 @@ export function showTitle({ setup = false, challenges = false, focus = null }: T
   el.hidden = false;
   el.scrollTop = 0; // altijd bovenaan beginnen, ook als je eerder naar beneden scrolde
   document.body.classList.add('titled');
-  const leaveTitle = () => {
+  // Titelscherm dicht. Met `glideTo` glijdt de camera van het titelshot daarheen; anders (een nieuw of geladen
+  // spel zette de camera al neer) gaat meteen het gewone beeld aan.
+  const leaveTitle = (glideTo: PlayCamera | null = null) => {
     el.hidden = true;
     el.classList.remove('home');
     document.body.classList.remove('titled');
     setSpeed(lastSpeed || 1); // het tempo van voor het menu (2× of 4×) blijft
+    const view = currentTitleView();
+    forgetPlayCamera();
+    if (glideTo && view) startGlide(view, glideTo);
+    else {
+      // (nog geen titelbeeld, bijv. Enter in het allereerste beeldje: dan meteen naar het doel)
+      if (glideTo) Object.assign(cam, glideTo);
+      setTitleView(null);
+    }
   };
   // Het hoofdmenu: groot logo en één lijst met keuzes, zoals in een echte game. "Nieuw spel" opent een tweede
   // lijst met de vier manieren om te beginnen. Pijltjes omhoog/omlaag en Enter werken ook.
@@ -570,7 +590,7 @@ export function showTitle({ setup = false, challenges = false, focus = null }: T
     // Voor de zekerheid: nooit beginnen met een volk dat (weer) op slot zit
     if (opts.people && !isPeopleUnlocked(opts.people, playerProfile())) opts.people = DEFAULT_PEOPLE;
     // Je spel van nu eerst op een vrije eigen plek zetten, zodat het niet stilletjes verdwijnt
-    const parked = parkLiveGame();
+    const parked = withPlayCamera(parkLiveGame); // (bewaard met de camera van de speler, niet het titelshot)
     newGame(opts);
     save(); // de nieuwe wereld meteen bewaren: hij komt op de automatische plek, in plaats van het vorige spel
     leaveTitle();
@@ -614,7 +634,7 @@ export function showTitle({ setup = false, challenges = false, focus = null }: T
     else if (k === 'profile') showProfile({ onClose: drawHome });
     // Snel spel: meteen beginnen met je laatste volk en moeilijkheid, een gewone kaart en één doel
     else if (k === 'quick') quickGame();
-    else if (k === 'load') showLoadScreen({ onLoaded: leaveTitle, onClose: drawHome });
+    else if (k === 'load') showLoadScreen({ onLoaded: () => leaveTitle(), onClose: drawHome });
     else if (k === 'cont') continueGame();
     else {
       // De schermen hieronder vullen het titelscherm zelf (met een kaartje); Terug brengt je hier weer
@@ -627,17 +647,26 @@ export function showTitle({ setup = false, challenges = false, focus = null }: T
   };
   // Verder met het spel dat nu draait, of de nieuwste opslag laden (bijv. na een verloren spel).
   // Lukt laden niet, dan meteen het laadscherm met de melding erin: een gewone melding valt achter het titelscherm.
+  // Daarna glijdt de camera van het titelshot naar waar je speelde (of naar de camera uit de opslag).
   const continueGame = () => {
     const newest = latestSlot(listSlots());
-    if (!isLiveGame() && !(newest && loadSlot(newest))) {
+    const live = isLiveGame(),
+      titleCam = { x: cam.x, y: cam.y, z: cam.z };
+    if (!live && !(newest && loadSlot(newest))) {
       showLoadScreen({
-        onLoaded: leaveTitle,
+        onLoaded: () => leaveTitle(),
         onClose: drawHome,
         message: 'Deze opslag kon niet geladen worden. Kies een andere plek.',
       });
       return;
     }
-    leaveTitle();
+    let target = live ? savedPlayCamera() : null;
+    if (!live) {
+      // De opslag zette de camera al neer: dat is het doel, en de vlucht begint nog bij het titelshot
+      target = { x: cam.x, y: cam.y, z: cam.z };
+      Object.assign(cam, titleCam);
+    }
+    leaveTitle(target);
   };
   if (setup) openSetup();
   else if (challenges) openChallenges(focus);

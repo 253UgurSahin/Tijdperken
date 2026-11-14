@@ -86,7 +86,22 @@ import { deserialize, load, save, serialize } from './game/save';
 import { G, newGame, sel } from './game/state';
 import { rememberPositions, update } from './game/update';
 import { drag, keys, mouse, refreshMouseTile, setView } from './input/input';
-import { TURN_SPEED, clampCam, panScreen, s2t, turnCamera, updateCamera, updateTurn } from './render/camera';
+import {
+  TITLE_REACH,
+  TURN_SPEED,
+  clampCam,
+  forgetPlayCamera,
+  panScreen,
+  rememberPlayCamera,
+  s2t,
+  savedPlayCamera,
+  setTitleView,
+  turnCamera,
+  updateCamera,
+  updateTurn,
+  withPlayCamera,
+} from './render/camera';
+import { inGlide, stopCinematic } from './render/cinematic';
 import { viewYaw } from './core/view';
 import { renderMini } from './render/minimap';
 import { render } from './render/render';
@@ -114,7 +129,7 @@ import { tickMusic } from './audio/music';
 import { darkness } from './game/time';
 import { isRaider } from './game/military';
 import { setColorBlind } from './render/kit';
-import { initQuality, tickQuality } from './render/quality';
+import { COARSE, initQuality, tickQuality } from './render/quality';
 import { precompileNightShaders } from './render/lighting';
 import { setSpeed, toast } from './ui/hud';
 import { AGES } from './data/ages';
@@ -183,10 +198,17 @@ function tick(now: number) {
     if (turn) turnCamera(turn * TURN_SPEED * rdt * (SET.camSpeed || 1));
   }
   updateTurn(rdt);
-  if (!titleEl.hidden) {
-    cam.x += Math.cos(now / 9000) * 0.4 * rdt;
-    cam.y += Math.sin(now / 7000) * 0.3 * rdt;
-    clampCam();
+  if (!titleEl.hidden) orbitTitle(rdt);
+  else if (titleYaw !== null) {
+    // Het titelscherm is dicht (meestal via leaveTitle, die zelf de camera terugzet of laat glijden)
+    // Ging het anders (bijv. een script), zet dan zelf de camera van de speler terug
+    titleYaw = null;
+    const home = savedPlayCamera();
+    if (!inGlide()) {
+      if (home) Object.assign(cam, home);
+      setTitleView(null);
+    }
+    forgetPlayCamera();
   }
   if (cam.tx != null) {
     const k = 1 - Math.pow(0.002, rdt);
@@ -246,7 +268,8 @@ function tick(now: number) {
   }
   // Echte tijd (tot 1 s), anders lijkt een traag apparaat sneller dan het is
   const frameTime = Math.min(1, realDt);
-  tickQuality(frameTime);
+  // Niet op het titelscherm: dat wijde shot is zwaarder dan het spel en zou de kwaliteit onnodig omlaag zetten
+  if (titleEl.hidden) tickQuality(frameTime);
   if (SET.fps) showFps(frameTime);
   measure('render', t0);
   t0 = performance.now();
@@ -308,6 +331,42 @@ function tick(now: number) {
     // Niet op het titelscherm: daar ligt soms een wereld waarin je nog niet speelt
     if (!G.over && SET.autosave && titleEl.hidden) save();
   }
+}
+// ---- Het titelscherm: een laag shot van je dorp, met een camera die langzaam rond het stamhuis draait ----
+let titleYaw: number | null = null; // de draaiing van het titelshot; null als het titelscherm dicht is
+// Kanteling en zoom van het titelshot per kwaliteit
+const WIDE_TITLE = { pitch: 0.5, z: 0.8 },
+  MID_TITLE = { pitch: 0.6, z: 0.85 },
+  LIGHT_TITLE = { pitch: 0.7, z: 0.9 };
+function orbitTitle(rdt: number) {
+  if (titleYaw === null) {
+    // Net open: de camera van de speler onthouden ("Verder spelen" glijdt daarheen terug)
+    stopCinematic();
+    rememberPlayCamera();
+    titleYaw = store.yaw;
+  }
+  if (SET.motion) titleYaw += rdt * 0.03;
+  // Op "hoog" het wijde lage shot. Op "laag" en op een telefoon of tablet: steiler en dichterbij, dan is er
+  // veel minder wereld te tekenen (het wijde shot heeft drie keer zoveel driehoeken). "Middel" zit ertussenin.
+  const pose =
+    store.quality === 'low' || COARSE ? LIGHT_TITLE : store.quality === 'mid' ? MID_TITLE : WIDE_TITLE;
+  // Geen stamhuis: rond de onthouden plek van de speler (rememberPlayCamera hierboven zette die altijd al)
+  const hall = G.bs.find(b => b.type === 'townhall'),
+    home = savedPlayCamera()!;
+  const hx = hall ? hall.x + 1 : home.x,
+    hy = hall ? hall.y + 1 : home.y;
+  // Het stamhuis rechts van het menu: het midden van het beeld 7 tegels naar links (langs 'rechts' op het
+  // scherm). Op een telefoon of een staand scherm staat het menu eroverheen, dan het stamhuis in het midden.
+  // En een paar tegels vooruit kijken: dan staat het dorp wat lager in beeld, met het land erachter.
+  const side = isCompact() || innerHeight > innerWidth ? 0 : 7,
+    ahead = 3;
+  cam.x = hx - side * Math.cos(titleYaw) - ahead * Math.sin(titleYaw);
+  cam.y = hy + side * Math.sin(titleYaw) - ahead * Math.cos(titleYaw);
+  cam.z = pose.z;
+  cam.tx = cam.tz = null;
+  cam.anchor = null;
+  clampCam();
+  setTitleView({ pitch: pose.pitch, yaw: titleYaw, reach: TITLE_REACH });
 }
 // Teller met beeldjes per seconde (aan te zetten in de instellingen)
 const fpsEl = Object.assign(document.createElement('div'), { id: 'fps', hidden: !SET.fps });
@@ -400,7 +459,8 @@ if (import.meta.env.DEV) import('./debug');
 const hot = window.claude && window.claude.hot;
 if (hot && hot.snapshot)
   try {
-    hot.snapshot(() => ({ save: G ? serialize() : null }));
+    // (op het titelscherm met de camera van de speler, niet het draaiende titelshot)
+    hot.snapshot(() => ({ save: G ? withPlayCamera(serialize) : null }));
   } catch (e) {}
 if (hot && hot.ready) hot.ready(start);
 else start((hot && hot.data) || {});
