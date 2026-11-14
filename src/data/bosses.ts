@@ -1,4 +1,4 @@
-// Kampioenen: na elk nieuw tijdperk leidt een sterke aanvoerder met een eigen naam de eerste aanval. Puur.
+// Kampioenen: na elk nieuw tijdperk leidt een sterke aanvoerder met een eigen naam een aanval (na een rustnacht). Puur.
 import type { PendingBoss } from '../types';
 
 /** Zoveel keer meer levens dan een gewone aanvaller van zijn soort. */
@@ -41,12 +41,37 @@ export const bossForAge = (age: number | undefined): BossDef | null =>
 /** Zijn hele naam: "Grimnar de Verscheurder". */
 export const bossName = (boss: BossDef): string => `${boss.n} ${boss.title}`;
 
+/** Een kampioen valt nooit aan voor deze dag: de eerste nachten zijn om te leren. */
+export const BOSS_FIRST_DAY = 4;
+/** Zoveel dagen na het nieuwe tijdperk komt hij op zijn vroegst: eerst een rustige nacht om je voor te bereiden. */
+export const BOSS_GRACE_DAYS = 2;
+
 /**
- * De kampioen die nog moet komen, netjes voor de opslag: { age } of null.
+ * Welke dag telt als de dag van het nieuwe tijdperk. Na 21 uur (en voor 6 uur, als de dag nog niet verder telt)
+ * is de aanval van die dag al begonnen: die nacht was dan geen rustnacht, dus telt de volgende dag.
+ */
+export const bossStartDay = (day: number, clock: number): number =>
+  clock >= 21 || clock < 6 ? day + 1 : day;
+
+/**
+ * Komt de kampioen mee met de aanval van dag `raidDay`? Niet op de oefennacht, niet voor dag 4, en niet
+ * vlak na het nieuwe tijdperk. Bij day 0 (een oude opslag of de testhulp) telt alleen de oefennacht.
+ */
+export function bossReady(pending: PendingBoss, raidDay: number, practice: boolean): boolean {
+  if (practice) return false;
+  if (pending.day <= 0) return true;
+  return raidDay >= BOSS_FIRST_DAY && raidDay >= pending.day + BOSS_GRACE_DAYS;
+}
+
+/**
+ * De kampioen die nog moet komen, netjes voor de opslag: { age, day } of null.
  * Opslag van daarvóór (of een tijdperk zonder kampioen) geeft null: dan komt er geen.
+ * Opslag zonder dag krijgt dag 0: die kampioen is dan meteen klaar.
  */
 export function cleanPendingBoss(o: unknown): PendingBoss | null {
   if (!o || typeof o !== 'object') return null;
-  // o is nu een object, maar age kan nog van alles zijn: bossForAge vindt alleen iets bij een echt tijdperk
-  return bossForAge((o as PendingBoss).age) ? { age: (o as PendingBoss).age } : null;
+  // o is nu een object, maar age en day kunnen nog van alles zijn: bossForAge vindt alleen iets bij een echt tijdperk
+  const { age, day } = o as Partial<PendingBoss>;
+  if (!bossForAge(age)) return null;
+  return { age: age!, day: typeof day === 'number' && Number.isFinite(day) ? day : 0 };
 }

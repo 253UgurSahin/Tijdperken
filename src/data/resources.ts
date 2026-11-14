@@ -63,6 +63,19 @@ export const BASEW: Record<string, number> = {
   starmetal: 0.6,
 };
 
+/** Wat je op de markt kunt kopen en verkopen (tegen goud). Gemaakte grondstoffen zoals staal niet. */
+export const MARKET_RES: string[] = [
+  'food',
+  'wood',
+  'stone',
+  'copper',
+  'tin',
+  'iron',
+  'coal',
+  'sand',
+  'lithium',
+];
+
 /**
  * Marktprijzen in goud voor 100 stuks van grondstof r. `level` is het niveau van de markt,
  * `marketMul` de marktbonus (1 = geen bonus, 1.2 = 20% betere prijzen).

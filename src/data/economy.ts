@@ -1,5 +1,6 @@
 // Rekenregels voor de economie, zonder spelstand: hoeveel je van een grondstof wilt hebben, wie wat gaat
 // halen, wanneer een fabriek pauzeert en hoeveel noodstroom het stamhuis geeft. Puur, dus te testen.
+import type { Cost } from '../types';
 
 /** Zoveel minuten verbruik wil je op voorraad: van fabrieken, centrales en wat je volk en leger eten. */
 export const STOCK_MINUTES = 3;
@@ -66,3 +67,55 @@ export const plentyOf = (stock: number, wanted: number, pausedNow: boolean): boo
 export const BASE_POWER = 5;
 export const BASE_POWER_AGE = 5;
 export const basePower = (age: number): number => (age >= BASE_POWER_AGE ? BASE_POWER : 0);
+
+/** Vanaf dit tijdperk kost uitbreiden ook goud: om er te komen heb je een markt nodig (goud koop je met voedsel). */
+export const CHUNK_GOLD_AGE = 4;
+/** Vanaf dit tijdperk is het goud voor uitbreiden de helft duurder (in plaats van staal te vragen). */
+export const CHUNK_DEARER_AGE = 5;
+
+/**
+ * Wat een nieuw stuk land kost. `bought`: hoeveel stukken je al kocht (elk stuk wordt duurder),
+ * `factor`: bonussen (zoals Zeekaarten) die uitbreiden goedkoper maken (1 = geen bonus).
+ * Nooit staal: dat maak je met kolen, en kolen moet je misschien juist eerst met uitbreiden vinden.
+ */
+export function chunkCostFor(age: number, bought: number, factor: number): Cost {
+  const grow = 1 + bought * 0.55;
+  const cost: Cost = { food: 80 * grow, wood: 80 * grow, stone: 40 * grow };
+  if (age >= CHUNK_GOLD_AGE) cost.gold = 12 * grow * (age >= CHUNK_DEARER_AGE ? 1.5 : 1);
+  for (const k in cost) cost[k] = Math.round(cost[k] * factor);
+  return cost;
+}
+
+/** De markt koopt en verkoopt per zoveel stuks (zie de knoppen bij de markt in ui/inspector.ts). */
+export const MARKET_LOT = 100;
+
+/** Wat de markt kan doen tegen een tekort: iets verkopen voor goud, of iets kopen met goud. */
+export interface MarketFix {
+  kind: 'sell' | 'buy';
+  r: string;
+}
+
+/**
+ * Kan de markt een tekort voor `cost` oplossen, met de voorraad `res`? Mist er goud, dan verkoop je iets
+ * waar je na de verkoop nog genoeg van overhoudt voor `cost` zelf. Mist er iets anders, dan koop je het,
+ * maar alleen met goud dat `cost` zelf niet nodig heeft. `tradable`: wat de markt handelt (MARKET_RES),
+ * `buyPrice`: wat 100 stuks kosten, `reserveGold`: goud dat ook apart blijft (zoals voor het volgende tijdperk).
+ * Geeft null als de markt nu niets kan doen.
+ */
+export function marketFixFor(
+  res: Record<string, number>,
+  cost: Cost,
+  tradable: string[],
+  buyPrice: (r: string) => number,
+  reserveGold = 0,
+): MarketFix | null {
+  const has = (r: string) => res[r] || 0;
+  const short = Object.keys(cost).filter(k => has(k) < cost[k]);
+  if (short.includes('gold')) {
+    const spare = tradable.find(r => has(r) - (cost[r] || 0) >= MARKET_LOT);
+    return spare ? { kind: 'sell', r: spare } : null;
+  }
+  const freeGold = has('gold') - (cost.gold || 0) - reserveGold;
+  const buy = short.find(r => tradable.includes(r) && freeGold >= buyPrice(r));
+  return buy ? { kind: 'buy', r: buy } : null;
+}

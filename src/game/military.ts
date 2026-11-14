@@ -698,13 +698,19 @@ const WAVE_GAP = 20;
 const joinWords = (list: string[]): string =>
   list.length > 1 ? `${list.slice(0, -1).join(', ')} en ${list[list.length - 1]}` : list[0];
 
+/**
+ * Is aanval nummer `raidNumber` (1 = de eerste) de oefennacht? De allereerste aanval in je allereerste spel
+ * is klein en zwak, zodat je rustig leert hoe een nacht gaat (geen uitdaging: daar gelden de regels van de
+ * uitdaging). Ook de voorspelling (komt de kampioen mee?) gebruikt deze regel.
+ * (het spel van nu telt al mee in games zodra er gespeeld wordt, zie checkAchievements: dus hooguit 1)
+ */
+export const isPracticeRaid = (raidNumber: number): boolean =>
+  raidNumber === 1 && !G.scenario && !G.peaceful && (store.profile?.games ?? 0) <= 1;
+
 export function spawnRaid(): void {
   G.raids++;
   const match = raidMatchNow();
-  // Oefennacht: de allereerste aanval in je allereerste spel is klein en zwak, zodat je rustig leert hoe
-  // een nacht gaat (geen uitdaging: daar gelden de regels van de uitdaging)
-  // (het spel van nu telt al mee in games zodra er gespeeld wordt, zie checkAchievements: dus hooguit 1)
-  const practice = G.raids === 1 && !G.scenario && !G.peaceful && (store.profile?.games ?? 0) <= 1;
+  const practice = isPracticeRaid(G.raids);
   const a = G.age,
     n = practice ? 2 : raidSize(match),
     // Elke aanval iets taaier, maar niet eindeloos. Op Meedogenloos hebben aanvallers meer levens,
@@ -735,8 +741,8 @@ export function spawnRaid(): void {
       at: G.t + Math.floor(k / anchors.length) * 0.7 + (k % anchors.length) * WAVE_GAP,
     });
   }
-  // Na een nieuw tijdperk leidt een kampioen de aanval: hij komt mee met de eerste groep
-  const boss = bossForRaid();
+  // Na een nieuw tijdperk (en een rustige nacht) leidt een kampioen de aanval: hij komt mee met de eerste groep
+  const boss = bossForRaid(G.raids);
   if (boss) {
     const e = nearby[0][(Math.random() * nearby[0].length) | 0];
     G.spawnQ.push({ type: boss.foe, x: e[0] + 0.5, y: e[1] + 0.5, scale, at: G.t + 2.5, boss: boss.age });

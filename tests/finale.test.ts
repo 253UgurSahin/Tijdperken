@@ -4,7 +4,16 @@ import { describe, expect, it } from 'vitest';
 import { ACHIEVEMENT, emptyFacts, newAchievements } from '../src/data/achievements';
 import { AGES } from '../src/data/ages';
 import { BLESSING, blessingOffer, bossOffer } from '../src/data/blessings';
-import { BOSSES, BOSS_DMG, BOSS_HP, bossForAge, bossName, cleanPendingBoss } from '../src/data/bosses';
+import {
+  BOSSES,
+  BOSS_DMG,
+  BOSS_HP,
+  bossForAge,
+  bossName,
+  bossReady,
+  bossStartDay,
+  cleanPendingBoss,
+} from '../src/data/bosses';
 import {
   CHARGE_NIGHTS,
   chargeFrac,
@@ -49,10 +58,42 @@ describe('kampioenen: de gegevens', () => {
   });
 
   it('opslag van de kampioen die nog komt: rommel en oude opslag geven null', () => {
-    expect(cleanPendingBoss({ age: 3 })).toEqual({ age: 3 });
-    expect(cleanPendingBoss({ age: 3, extra: 1 })).toEqual({ age: 3 });
+    // Oude opslag zonder dag: dag 0, dan is hij meteen klaar
+    expect(cleanPendingBoss({ age: 3 })).toEqual({ age: 3, day: 0 });
+    expect(cleanPendingBoss({ age: 3, extra: 1 })).toEqual({ age: 3, day: 0 });
+    expect(cleanPendingBoss({ age: 3, day: 7 })).toEqual({ age: 3, day: 7 });
+    expect(cleanPendingBoss({ age: 3, day: 'x' })).toEqual({ age: 3, day: 0 });
     for (const bad of [null, undefined, 3, 'x', {}, { age: 0 }, { age: 99 }])
       expect(cleanPendingBoss(bad)).toBeNull();
+  });
+});
+
+describe('kampioenen: pas na een rustnacht', () => {
+  it('niet op de oefennacht', () => {
+    expect(bossReady({ age: 1, day: 0 }, 10, true)).toBe(false);
+    expect(bossReady({ age: 1, day: 2 }, 10, true)).toBe(false);
+  });
+  it('niet op de eerste aanvalsnacht na het nieuwe tijdperk, wel daarna', () => {
+    // Nieuw tijdperk op dag 2 (de eerste aanvalsnacht): niet die nacht, niet voor dag 4
+    expect(bossReady({ age: 1, day: 2 }, 2, false)).toBe(false);
+    expect(bossReady({ age: 1, day: 2 }, 3, false)).toBe(false);
+    expect(bossReady({ age: 1, day: 2 }, 4, false)).toBe(true);
+    // Nieuw tijdperk op dag 6: de aanval van dag 6 en 7 zonder hem, op dag 8 wel
+    expect(bossReady({ age: 4, day: 6 }, 6, false)).toBe(false);
+    expect(bossReady({ age: 4, day: 6 }, 7, false)).toBe(false);
+    expect(bossReady({ age: 4, day: 6 }, 8, false)).toBe(true);
+  });
+  it('een nieuw tijdperk tijdens de aanval van die nacht telt pas vanaf de volgende dag', () => {
+    expect(bossStartDay(4, 14)).toBe(4);
+    expect(bossStartDay(4, 22)).toBe(5);
+    expect(bossStartDay(4, 3)).toBe(5);
+    // Nieuw tijdperk op dag 4 om 22 uur (normaal: aanvallen op even dagen): dag 6 is de rustnacht, dag 8 komt hij
+    const pending = { age: 2, day: bossStartDay(4, 22) };
+    expect(bossReady(pending, 6, false)).toBe(false);
+    expect(bossReady(pending, 8, false)).toBe(true);
+  });
+  it('oude opslag (dag 0) is meteen klaar', () => {
+    expect(bossReady({ age: 2, day: 0 }, 2, false)).toBe(true);
   });
 });
 

@@ -1,5 +1,5 @@
 // Algemene HUD: meldingen, snelheid en knoppen.
-import type { Foe } from '../types';
+import type { CoachAct, Foe } from '../types';
 import { store } from '../core/store';
 import { SET } from '../core/settings';
 import { sfx } from '../audio/sound';
@@ -172,7 +172,10 @@ $('#expandBtn').onclick = () => {
 $('#coachBtn').onclick = () => {
   if (!store.coachAct) return;
   sfx('tick');
-  const a = store.coachAct;
+  runCoachAct(store.coachAct);
+};
+/** Doe wat een knop van de coach vraagt (de knop bij de volgende stap, en de knop op de doelenkaart). */
+export function runCoachAct(a: CoachAct): void {
   if (a.b) {
     setTab(B[a.b].cat);
     store.placing = a.b;
@@ -182,6 +185,7 @@ $('#coachBtn').onclick = () => {
     if (!has(buildCost(a.b))) toast(`Nog ${lackText(buildCost(a.b))} nodig. Je kunt alvast een plek zoeken.`);
   } else if (a.k === 'expand') setExpand(true);
   else if (a.k === 'age') ageUp();
+  else if (a.k === 'speed') setSpeed(2);
   else if (a.k === 'alarm') {
     // De dichtstbijzijnde aanvaller, of anders de dichtstbijzijnde soldaat van een rivaal die nog onderweg is
     // (het stamhuis staat er zolang je speelt)
@@ -198,7 +202,7 @@ $('#coachBtn').onclick = () => {
     }
   }
   store.uiDirty = true;
-};
+}
 $('#cancelBtn').onclick = () => {
   store.placing = null;
   store.cmdMode = null;

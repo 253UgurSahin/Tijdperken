@@ -254,7 +254,7 @@ window.__tp.charge = frac => {
   if (G.finale && G.finale.need > 0) G.finale.hours = G.finale.need * frac;
 };
 window.__tp.bossRaid = (age = Math.max(1, G.age)) => {
-  G.boss = { age };
+  G.boss = { age, day: 0 }; // dag 0: meteen klaar, zonder rustnacht
   spawnRaid();
 };
 // Diplomatie: zet een relatie (__tp.rel(0, 70)), laat een rivaal een bericht sturen (__tp.rivalOffer(0, 'ask')),

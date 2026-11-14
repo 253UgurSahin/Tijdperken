@@ -299,6 +299,10 @@ body.panelopen #objectives {
   opacity: 1;
   font-weight: 600;
 }
+/* Uitleg onder de lijst met eisen: een beetje lucht erboven */
+#mission .fixwhy {
+  margin-top: 8px;
+}
 #fixBtn {
   width: 100%;
   margin-bottom: 6px;

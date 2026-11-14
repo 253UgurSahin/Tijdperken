@@ -13,7 +13,11 @@ import {
   plentyOf,
   reserveFor,
   wantedStock,
+  chunkCostFor,
+  marketFixFor,
+  MARKET_LOT,
 } from '../src/data/economy';
+import { MARKET_RES } from '../src/data/resources';
 import { NORMAL_POWER, RAID_MATCH_MAX, RAID_MATCH_MIN, raidMatch } from '../src/data/difficulty';
 import { UNITS, foodUpkeep } from '../src/data/units';
 
@@ -138,5 +142,66 @@ describe('aanvallen passen zich aan bij je leger', () => {
   it('een normaal leger wordt sterker in elk tijdperk, voor elk tijdperk één getal', () => {
     expect(NORMAL_POWER).toHaveLength(AGES.length);
     for (let a = 1; a < AGES.length; a++) expect(NORMAL_POWER[a]).toBeGreaterThan(NORMAL_POWER[a - 1]);
+  });
+});
+
+describe('uitbreiden en de markt', () => {
+  it('elk nieuw stuk land is duurder dan het vorige', () => {
+    for (const age of [0, 3, 4, 5, 8])
+      for (let bought = 0; bought < 10; bought++) {
+        const now = chunkCostFor(age, bought, 1),
+          next = chunkCostFor(age, bought + 1, 1);
+        for (const k in now) expect(next[k], `${k} tijdperk ${age}`).toBeGreaterThan(now[k]);
+      }
+  });
+  it('een bonus maakt uitbreiden goedkoper', () => {
+    const full = chunkCostFor(4, 2, 1),
+      cheap = chunkCostFor(4, 2, 0.8);
+    for (const k in full) expect(cheap[k]).toBeLessThan(full[k]);
+  });
+  it('op de markt koop je ook kolen en ijzer (nodig voor staal)', () => {
+    expect(MARKET_RES).toContain('coal');
+    expect(MARKET_RES).toContain('iron');
+    expect(MARKET_RES).not.toContain('gold');
+  });
+});
+
+describe('de markt als oplossing voor een tekort', () => {
+  const price = () => 60;
+  const trade = ['food', 'wood', 'stone'];
+  it('zonder goud stuurt hij je niet naar Koop', () => {
+    const cost = { food: 80, wood: 80, stone: 40 };
+    expect(marketFixFor({ food: 500, wood: 500, stone: 10, gold: 0 }, cost, trade, price)).toBeNull();
+    expect(marketFixFor({ food: 500, wood: 500, stone: 10, gold: 60 }, cost, trade, price)).toEqual({
+      kind: 'buy',
+      r: 'stone',
+    });
+  });
+  it('koopt niet met goud dat het land zelf nodig heeft', () => {
+    const cost = { food: 80, wood: 80, stone: 40, gold: 20 };
+    expect(marketFixFor({ food: 500, wood: 500, stone: 10, gold: 70 }, cost, trade, price)).toBeNull();
+    expect(marketFixFor({ food: 500, wood: 500, stone: 10, gold: 80 }, cost, trade, price)?.kind).toBe('buy');
+  });
+  it('koopt niet met goud dat voor het volgende tijdperk apart ligt', () => {
+    const cost = { food: 80, wood: 80, stone: 40 };
+    const res = { food: 500, wood: 500, stone: 10, gold: 200 };
+    expect(marketFixFor(res, cost, trade, price)?.kind).toBe('buy');
+    expect(marketFixFor(res, cost, trade, price, 200)).toBeNull();
+  });
+  it('verkopen alleen als er na de verkoop nog genoeg over is', () => {
+    const cost = { food: 80, wood: 80, stone: 40, gold: 20 };
+    // 50 voedsel: te weinig om te verkopen (en het land heeft zelf 80 nodig)
+    expect(marketFixFor({ food: 50, wood: 80, stone: 40, gold: 0 }, cost, trade, price)).toBeNull();
+    expect(marketFixFor({ food: 80 + MARKET_LOT, wood: 80, stone: 40, gold: 0 }, cost, trade, price)).toEqual(
+      {
+        kind: 'sell',
+        r: 'food',
+      },
+    );
+    // Geen voedsel over, wel hout: dan verkoop je hout
+    expect(marketFixFor({ food: 90, wood: 300, stone: 40, gold: 0 }, cost, trade, price)).toEqual({
+      kind: 'sell',
+      r: 'wood',
+    });
   });
 });

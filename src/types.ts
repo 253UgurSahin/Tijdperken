@@ -554,6 +554,8 @@ export interface FinaleState {
 /** De kampioen die de volgende aanval leidt: het tijdperk waar hij bij hoort (zie game/bosses.ts). */
 export interface PendingBoss {
   age: number;
+  /** De dag van het nieuwe tijdperk; hij komt pas na een rustige nacht (0 = meteen klaar, zoals oude opslag). */
+  day: number;
 }
 
 /** Wie een wereldwonder heeft ('you' of de sleutel van een rivaal), en sinds welke dag. */
@@ -802,7 +804,8 @@ export interface GameState {
 export interface CoachAct {
   l: string;
   b?: string;
-  k?: 'age' | 'alarm' | 'expand' | 'sel';
+  /** speed: de tijd op 2× zetten (als je alleen nog hoeft te wachten). */
+  k?: 'age' | 'alarm' | 'expand' | 'sel' | 'speed';
   id?: number;
   /** Bij uitbreiden: de grondstof die je zoekt. */
   r?: string;

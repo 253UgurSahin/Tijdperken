@@ -1,6 +1,6 @@
 // Doelen linksboven: wat je nodig hebt voor het volgende tijdperk, en hoe ver je bent met winnen
 // (of met de uitdaging, met de klok erbij).
-import type { AgeUpDef } from '../types';
+import type { AgeUpDef, CoachAct } from '../types';
 import { store } from '../core/store';
 import { sfx } from '../audio/sound';
 import { AGES, AGE_UP } from '../data/ages';
@@ -23,11 +23,11 @@ import { challengeStatus, type ChallengeStatus } from '../game/scenario';
 import { victoryGoals } from '../game/victory';
 import { measureHud } from '../main';
 import { ageUp } from './age';
-import { andJoin, placed } from './coach';
-import { fmt, gem, theAge } from './format';
+import { andJoin, chunkShortStep, placed } from './coach';
+import { esc, fmt, gem, theAge } from './format';
 import { ico } from './glyphs';
 import { setHTML, sigs } from './header';
-import { setExpand, toast } from './hud';
+import { runCoachAct, setExpand, toast } from './hud';
 import { togglePanel } from './panel';
 import { $, isCompact } from '../util/dom';
 
@@ -94,7 +94,10 @@ export function renderChronicle() {
   const goals = challenge ? challengeHTML(challenge) : winGoalsHTML(),
     races = racesHTML(),
     open = store.missionOpen;
-  const sig = JSON.stringify([G.age, req, goals, races, open]);
+  // Kun je het land nog niet betalen? Dan wijst de knop naar wat eerst moet (zoals de markt), net als de coach
+  const short = req && req.fix ? chunkShortStep(RES[req.fix].n.toLowerCase()) : null;
+  fixAct = short ? short.act || null : null;
+  const sig = JSON.stringify([G.age, req, goals, races, open, short]);
   setHTML($('#mission'), 'mission', sig, () => {
     const chevron = `<i class="caret" aria-hidden="true">${ico(open ? '⌃' : '⌄')}</i>`;
     // In een uitdaging, en bij één gekozen doel, blijft het doel altijd in beeld (één duidelijk doel per
@@ -105,9 +108,12 @@ export function renderChronicle() {
     if (!req)
       return `${shown}<button id="ageToggle" aria-expanded="${open}"><span class="mt">Laatste tijdperk</span>${chevron}</button>${races}<div class="body"><p class="why">${CHAPTERS[G.age].s}</p>${folded}</div>`;
     const name = theAge(G.age + 1); // "de bronstijd", "het dronetijdperk"
-    const fixBtn = req.fix
-      ? `<button id="fixBtn" title="Er ligt nog geen ${RES[req.fix].n.toLowerCase()} binnen je grenzen">Gebied uitbreiden</button>`
-      : '';
+    let fixBtn = '';
+    // Waarom het land nog niet lukt (de titel staat al op de coachbalk), met een korte knop als dat kan
+    if (short)
+      fixBtn = `<p class="why fixwhy">${esc(short.h)}</p>${fixAct ? `<button id="fixBtn">${esc(fixAct.l)}</button>` : ''}`;
+    else if (req.fix)
+      fixBtn = `<button id="fixBtn" title="Er ligt nog geen ${RES[req.fix].n.toLowerCase()} binnen je grenzen">Gebied uitbreiden</button>`;
     const ageBtn = req.allReq ? `<button class="primary" id="ageBtn">Ga naar ${name} →</button>` : '';
     return `${shown}<button id="ageToggle" aria-expanded="${open}" title="Wat heb je nodig voor ${name}?"><span class="mt">Naar ${name}</span><span class="mv">${req.ready}/${req.total}</span>${chevron}</button>
     <div class="bar thin ${req.allReq ? '' : 'acc'}"><i style="width:${(req.ready / req.total) * 100}%"></i></div>
@@ -243,7 +249,8 @@ $('#mission').addEventListener('click', e => {
   if (t.id === 'ageBtn') ageUp();
   else if (t.id === 'fixBtn') {
     sfx('tick');
-    setExpand(true);
+    if (fixAct) runCoachAct(fixAct);
+    else setExpand(true);
     if (isCompact()) togglePanel();
   } else if (t.id === 'ageToggle') {
     sfx('tick');
@@ -257,3 +264,6 @@ $('#mission').addEventListener('click', e => {
     renderChronicle();
   }
 });
+
+// Wat de knop op de doelenkaart eerst laat doen als je het land nog niet kunt betalen (zie chunkShortStep)
+let fixAct: CoachAct | null = null;
