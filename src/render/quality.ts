@@ -5,10 +5,13 @@ import type * as T3 from 'three';
 import { store } from '../core/store';
 import { SET, saveSet } from '../core/settings';
 import { configurePost, type PostSettings } from './post';
-import { requestResize, resize, sun } from './scene';
+import { PL, requestResize, resize, sun } from './scene';
 import { setScatterDensity } from './scatter';
 import { setFineDetail } from './terrainlook';
 import { setNodeDetail } from './nodes';
+import { precompileNightShaders } from './lighting';
+import { G } from '../game/state';
+import { darkness } from '../game/time';
 
 /** Eén kwaliteitsstand: naam, resolutie-factor, maximum aantal pixels, schaduwen en nabewerking. */
 interface QualityLevel extends PostSettings {
@@ -22,6 +25,8 @@ interface QualityLevel extends PostSettings {
   /** Hoeveel grassprieten en steentjes (0-1), en of grond, water, bomen en bergen fijn getekend worden. */
   scatter: number;
   fine: boolean;
+  /** Hoeveel lampen 's nachts echt licht geven (de lichtvlekken op de grond zijn er altijd). */
+  lamps: number;
 }
 export const LEVELS: Record<string, QualityLevel> = {
   low: {
@@ -36,6 +41,7 @@ export const LEVELS: Record<string, QualityLevel> = {
     particles: false,
     scatter: 0, // geen grassprieten en steentjes
     fine: false, // eenvoudiger grond, water, bomen en bergen
+    lamps: 0, // een nacht kost dan net zoveel als een dag
   },
   mid: {
     name: 'Middel',
@@ -48,6 +54,7 @@ export const LEVELS: Record<string, QualityLevel> = {
     outline: true,
     scatter: 0.5,
     fine: true,
+    lamps: 3,
   },
   high: {
     name: 'Hoog',
@@ -64,6 +71,7 @@ export const LEVELS: Record<string, QualityLevel> = {
     hdr: true, // felle kleuren: alleen echte lichten gloeien
     scatter: 1,
     fine: true,
+    lamps: 6,
   },
 };
 const ORDER = ['low', 'mid', 'high'];
@@ -76,6 +84,33 @@ let level: string = 'high',
   time: number = 0,
   slow: number = 0,
   fast: number = 0;
+// De beste meting uit de reeks trage seconden van nu: daarmee vergelijken we na een stap omlaag
+let slowBest = 0;
+// Hoeveel lampen er nu licht geven (-1: nog niet ingesteld, bij het opstarten)
+let lampCount = -1;
+// true: de nachtshaders horen nog bij een ander aantal lampen (na een automatische stap overdag)
+let nightShadersStale = false;
+/**
+ * Een stap omlaag die we nog beoordelen: hoe vloeiend het ervoor liep, de stand en resolutie van daarvoor (om
+ * terug te kunnen) en hoeveel metingen van een seconde er sindsdien zijn geweest.
+ */
+interface StepTrial {
+  fps: number;
+  level: string;
+  scale: number;
+  tooHeavy: string;
+  tooHeavyAt: number;
+  windows: number;
+}
+let trial: StepTrial | null = null;
+/**
+ * Het plafond van dit apparaat (beeldjes per seconde), als we dat kennen: een telefoon die stroom spaart of een
+ * laptop op de accu tekent vaak hooguit 30 beeldjes per seconde, hoe licht het beeld ook is. Een stap omlaag
+ * maakt het dan niet vloeiender, alleen lelijker. 0 = geen plafond bekend.
+ */
+let capFps = 0;
+// De stappen (stand en resolutie) die we bij dit plafond al eens hebben teruggedraaid: dat doen we maar één keer
+const undoneSteps = new Set<string>();
 
 /** Eigen keuze uit de instellingen: schaduwen, gloed, omlijning en resolutie los aan of uit. */
 function customLevel(): QualityLevel {
@@ -94,6 +129,7 @@ function customLevel(): QualityLevel {
     hdr: !!g.bloom,
     scatter: g.shadows ? 1 : 0.5,
     fine: (g.scale || 1) >= 0.8,
+    lamps: g.shadows ? 6 : 3,
   };
 }
 
@@ -119,6 +155,16 @@ function apply(name: string, later?: boolean) {
   setScatterDensity(L.scatter);
   setFineDetail(L.fine);
   setNodeDetail(L.fine);
+  // Lampen die uit staan doen niet mee in de shaders: op Laag kost een nacht zo net zoveel als een dag
+  PL.forEach((p, i) => (p.visible = i < L.lamps));
+  // Een ander aantal lampen geeft andere nachtshaders: die maken we klaar, anders hapert de eerste
+  // schemering. (Bij het opstarten doet main.ts dat na het eerste beeldje.) Bij een automatische stap
+  // overdag wachten we tot het bijna avond is: het apparaat heeft het op dat moment al zwaar.
+  if (lampCount >= 0 && L.lamps !== lampCount) {
+    if (later && !darkSoon()) nightShadersStale = true;
+    else precompileNightShaders();
+  }
+  lampCount = L.lamps;
   if (later) requestResize();
   else resize();
 }
@@ -126,6 +172,11 @@ function apply(name: string, later?: boolean) {
 /** Kies de kwaliteit uit de instelling (bij opstarten en als de speler hem verandert). */
 export function initQuality() {
   if (!SET.quality) SET.quality = 'auto';
+  trial = null;
+  capFps = 0;
+  undoneSteps.clear();
+  // Opnieuw beginnen met meten: oude tellingen (van vóór deze keuze) zeggen niets meer
+  frames = time = slow = fast = slowBest = 0;
   apply(SET.quality === 'auto' ? (COARSE ? 'mid' : 'high') : SET.quality);
 }
 
@@ -136,11 +187,46 @@ export function setQuality(q: string) {
 }
 
 /**
+ * Na een stap omlaag: liep het daarna minstens 10% vloeiender? Zo niet, dan zat het apparaat aan een plafond
+ * (of lag het niet aan het tekenen) en draaien we de stap terug. De eerste seconde na de stap tellen we niet
+ * mee: daarin zit de hapering van het omschakelen zelf.
+ */
+function judgeStep(t: StepTrial, fps: number) {
+  t.windows++;
+  if (t.windows === 1) return;
+  if (fps >= t.fps * 1.1) {
+    trial = null; // het hielp: de stap blijft
+    return;
+  }
+  if (t.windows < 3) return; // nog een seconde afwachten
+  trial = null;
+  const step = t.level + '@' + t.scale;
+  if (undoneSteps.has(step)) return; // deze stap draaiden we al eens terug: nu laten we hem staan
+  undoneSteps.add(step);
+  capFps = t.fps;
+  // Terug naar de stand en resolutie van vóór de stap; die stand was dus niet "te zwaar"
+  tooHeavy = t.tooHeavy;
+  tooHeavyAt = t.tooHeavyAt;
+  if (level !== t.level) apply(t.level, true);
+  store.resScale = t.scale;
+  requestResize();
+  slow = fast = slowBest = 0;
+}
+
+// Is het nu donker, of binnen het uur?
+const darkSoon = () => darkness() > 0 || darkness(G.clock + 1) > 0;
+
+/**
  * Elk beeldje: bij "automatisch" meten we per seconde hoe vloeiend het loopt.
- * Twee seconden onder ~45 beeldjes/s: een stap omlaag. Vijf seconden ruim boven ~57: een stap omhoog.
+ * Twee seconden onder ~45 beeldjes/s: een stap omlaag (bij een bekend plafond: drie seconden duidelijk eronder).
+ * Vijf seconden ruim boven ~57: een stap omhoog.
  * Tussen de stappen schuift ook de resolutie mee, zodat het niet ineens veel lelijker wordt.
  */
 export function tickQuality(rdt: number) {
+  if (nightShadersStale && darkSoon()) {
+    nightShadersStale = false;
+    precompileNightShaders();
+  }
   if (SET.quality !== 'auto' || document.hidden) return;
   // Eén traag beeldje na terugkomen op het tabblad (of na een hapering van de browser) zegt niets
   if (rdt > 0.25) return;
@@ -150,33 +236,61 @@ export function tickQuality(rdt: number) {
   const fps = frames / time;
   frames = 0;
   time = 0;
-  if (fps < 35) {
+  if (trial) {
+    judgeStep(trial, fps);
+    return;
+  }
+  // Duidelijk sneller dan het plafond: dat is er niet meer (bijv. de telefoon spaart geen stroom meer)
+  if (capFps && fps > capFps * 1.15) {
+    capFps = 0;
+    undoneSteps.clear();
+  }
+  // Met een bekend plafond telt een seconde pas als traag als hij duidelijk (10%) onder dat plafond zit, en
+  // zijn er drie trage seconden achter elkaar nodig. Eén hapering (opruimen van geheugen, een nieuwe shader,
+  // een nieuw tijdperk) duwt een telefoon die op 30 beeldjes per seconde loopt dan niet meer omlaag.
+  const slowBelow = capFps ? Math.min(45, capFps * 0.9) : 45;
+  const slowNeeded = capFps ? 3 : 2;
+  if (!capFps && fps < 35) {
     // Flink haperen: niet wachten, meteen een stap omlaag
-    slow = 2;
+    slow = slowNeeded;
+    slowBest = fps;
     fast = 0;
-  } else if (fps < 45) {
+  } else if (fps < slowBelow) {
     slow++;
+    slowBest = Math.max(slowBest, fps);
     fast = 0;
   } else if (fps > 57) {
     fast++;
-    slow = 0;
-  } else slow = fast = 0;
+    slow = slowBest = 0;
+  } else slow = fast = slowBest = 0;
   const L = LEVELS[level];
   // store.resScale is gezet door apply() (via initQuality bij het opstarten)
-  if (slow >= 2) {
-    slow = 0;
+  if (slow >= slowNeeded) {
+    // Vergelijk straks met de beste van de trage seconden, niet met de traagste: anders lijkt een stap na
+    // een toevallige hapering al snel te helpen
+    const before: StepTrial = {
+      fps: slowBest,
+      level,
+      scale: store.resScale!,
+      tooHeavy,
+      tooHeavyAt,
+      windows: 0,
+    };
+    slow = slowBest = 0;
     // Onthoud dat deze stand te zwaar was: daar gaan we de eerste anderhalve minuut niet naar terug
     // (anders springt het elke tien seconden heen en weer, en elke wissel geeft zelf een hapering)
     tooHeavy = level;
     tooHeavyAt = performance.now();
     if (store.resScale! > L.scale - 0.2 + 0.01) {
-      store.resScale = Math.max(0.5, store.resScale! - (fps < 35 ? 0.2 : 0.1));
+      store.resScale = Math.max(0.5, store.resScale! - (!capFps && fps < 35 ? 0.2 : 0.1));
       requestResize();
     } else if (ORDER.indexOf(level) > 0) apply(ORDER[ORDER.indexOf(level) - 1], true);
     else if (store.resScale! > 0.5) {
       store.resScale = Math.max(0.5, store.resScale! - 0.1);
       requestResize();
     }
+    // Hielp de stap? Dat zien we in de seconden hierna (zie judgeStep)
+    if (level !== before.level || store.resScale !== before.scale) trial = before;
   } else if (fast >= 5) {
     fast = 0;
     if (store.resScale! < L.scale - 0.01) {

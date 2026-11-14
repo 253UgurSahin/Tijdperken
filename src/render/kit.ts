@@ -2,7 +2,10 @@
 import * as T3 from 'three';
 import { TAU } from '../config';
 import { hash2 } from '../util/random';
+import { litShares } from './nightclock';
 import { addSnow } from './weather';
+
+export { lampSwitchAt, litShares } from './nightclock';
 
 /** Materiaal-opties: e = gloeikleur, ei = gloeisterkte, m = metaalachtig, r = ruwheid, t = doorzichtig, o = dekking, b = zonder licht. */
 export interface MatOpts {
@@ -161,14 +164,21 @@ function mergeSameMaterial(g: T3.Object3D, parts: T3.Mesh[], material: T3.Materi
     return q;
   });
   const pos = new Float32Array(n * 3);
+  // Ramen en glas: elk deel krijgt zijn eigen nummer (winPane), zodat de raam-shader elke ruit als geheel aan
+  // of uit zet. Ook een glazen koepel van honderden hoekpunten is zo één ruit (zie windowShader).
+  const isWindow = material === WIN || material === GLASS;
+  const paneIds = isWindow ? new Float32Array(n) : null;
   let k = 0;
-  for (const q of gs) {
+  gs.forEach((q, part) => {
+    const count = q.attributes.position.count;
     pos.set((q.attributes.position as T3.BufferAttribute).array, k * 3);
-    k += q.attributes.position.count;
+    paneIds?.fill(part, k, k + count);
+    k += count;
     q.dispose();
-  }
+  });
   const mg = new T3.BufferGeometry();
   mg.setAttribute('position', new T3.BufferAttribute(pos, 3));
+  if (paneIds) mg.setAttribute('winPane', new T3.BufferAttribute(paneIds, 1));
   mg.computeVertexNormals();
   mg.computeBoundingSphere();
   mg.userData.merged = true; // hoort bij precies één model (zie disposeMerged)
@@ -302,6 +312,76 @@ const tmpBox = new T3.Box3(),
   tmpV3 = new T3.Vector3();
 // Een vast toevalsgetal (0..1) bij een gebouw (seed) en een nummer, altijd hetzelfde
 const hash01 = (seed: number, n: number) => hash2(seed, n, 7);
+/** Een tint als verhouding voor rood, groen en blauw (1 = de gewone kleur). */
+type Tint = [number, number, number];
+const NO_TINT: Tint = [1, 1, 1];
+/**
+ * Leien, dakpannen, riet, baksteen en pleister in een paar tinten. Elk gebouw krijgt per soort één tint (vast bij
+ * zijn nummer), zodat een rij huizen er niet gekopieerd uitziet. De verschillen zijn klein en grijzig: het blijft
+ * hetzelfde dorp. Kleuren die iets betekenen (het dak van de kazerne, de legerkleur, de ondergrond) doen niet mee.
+ */
+const PALETTE: { base: string; tints: Tint[] }[] = [
+  // leien: blauwgrijs, donker antraciet, lichter grijs, paarsgrijs
+  {
+    base: '#566170',
+    tints: [
+      [1, 1, 1],
+      [0.82, 0.85, 0.9],
+      [1.14, 1.1, 1.03],
+      [1.03, 0.95, 1.02],
+    ],
+  },
+  // dakpannen: oranjerood, dieper rood, oranjer, bruiner, verbleekt
+  {
+    base: '#a5523e',
+    tints: [
+      [1, 1, 1],
+      [0.8, 0.74, 0.76],
+      [1.08, 1.18, 1.12],
+      [0.84, 0.88, 0.92],
+      [1.12, 1.1, 1.08],
+    ],
+  },
+  // riet: strogeel, verweerd, vers
+  {
+    base: '#b8955a',
+    tints: [
+      [1, 1, 1],
+      [0.85, 0.84, 0.83],
+      [1.06, 1.06, 0.97],
+    ],
+  },
+  // baksteen: rood, donker paarsbruin, oranjer
+  {
+    base: '#a3553f',
+    tints: [
+      [1, 1, 1],
+      [0.8, 0.74, 0.78],
+      [1.07, 1.11, 1.03],
+    ],
+  },
+  // pleister: zandwit, crème, koeler wit
+  {
+    base: '#e5dbc5',
+    tints: [
+      [1, 1, 1],
+      [1.0, 0.95, 0.88],
+      [0.94, 0.97, 1.0],
+    ],
+  },
+];
+// Welke kleur (als hex, zonder #) bij welke soort hoort: de basiskleur en de donkere en lichte randjes ervan
+let paletteFamilies: Map<string, number> | null = null;
+function paletteFamily(c: T3.Color): number | undefined {
+  if (!paletteFamilies) {
+    const families = new Map<string, number>();
+    PALETTE.forEach((f, i) => {
+      for (const hex of [f.base, darker(f.base), lighter(f.base)]) families.set(hex.slice(1), i);
+    });
+    paletteFamilies = families;
+  }
+  return paletteFamilies.get(c.getHexString());
+}
 /**
  * Eén vorm met kleuren per hoekpunt uit losse delen, elk met zijn eigen plaatsing (matrix). Met `shade`
  * (gebouwen) worden muren onderaan wat donkerder en krijgen hoekpunten die tegen een ander blok aan liggen
@@ -336,12 +416,17 @@ function bakeColours(items: [SolidMesh, T3.Matrix4][], shade: boolean, seed?: nu
     tg = 1 + (hash01(seed, 2) - 0.5) * 0.07;
     tb = 1 + (hash01(seed, 3) - 0.5) * 0.09;
   }
+  // Per soort dak en muur de tint van dit gebouw (zie PALETTE); zonder seed (pictogram, voorbeeld) niet
+  const tints =
+    seed == null ? null : PALETTE.map((f, i) => f.tints[Math.floor(hash01(seed, 30 + i) * f.tints.length)]);
   const pos = new Float32Array(n * 3),
     col = new Float32Array(n * 3);
   let k = 0;
   gs.forEach(([q, c], part) => {
     const cnt = q.attributes.position.count,
       p = (q.attributes.position as T3.BufferAttribute).array;
+    const family = tints ? paletteFamily(c) : undefined,
+      tint = family == null || !tints ? NO_TINT : tints[family];
     pos.set(p, k * 3);
     for (let i = 0; i < cnt; i += 3) {
       // Per driehoek: liggende vlakken (vloeren, platen, daken) houden hun volle kleur
@@ -359,9 +444,9 @@ function bakeColours(items: [SolidMesh, T3.Matrix4][], shade: boolean, seed?: nu
             if (b !== part && blocks[b].containsPoint(tmpV3)) touching++;
           f *= touching === 0 ? 1 : touching === 1 ? 0.84 : 0.74;
         }
-        col[(k + j) * 3] = c.r * f * tr;
-        col[(k + j) * 3 + 1] = c.g * f * tg;
-        col[(k + j) * 3 + 2] = c.b * f * tb;
+        col[(k + j) * 3] = c.r * f * tr * tint[0];
+        col[(k + j) * 3 + 1] = c.g * f * tg * tint[1];
+        col[(k + j) * 3 + 2] = c.b * f * tb * tint[2];
       }
     }
     k += cnt;
@@ -877,6 +962,171 @@ export const GLASS = new T3.MeshStandardMaterial({
   emissive: new T3.Color('#ffd79a'),
   emissiveIntensity: 0,
 });
+// Gedeelde waarden voor de raam-shader (zie setCityNight): welk deel van de ramen aan is, en koel licht
+const LIT_SHARE = { value: new T3.Vector2(0, 1) },
+  COOL_WINDOWS = { value: 0 };
+/**
+ * Ramen en glas gaan 's avonds niet allemaal tegelijk aan, maar huis voor huis. Elk raam krijgt een vast
+ * toevalsgetal uit de plek van zijn gebouw (de oorsprong van de vorm) en zijn eigen nummer in die vorm. Een
+ * raam brandt als dat getal onder het deel ligt dat nu aan is. Zeven op de tien ramen volgen het huis (dan
+ * gaat het hele huis aan), de rest is een losse kamer. Na middernacht gaan ze per raam weer uit.
+ */
+function windowShader(shader: T3.Shader): void {
+  shader.uniforms.uLitShare = LIT_SHARE;
+  shader.uniforms.uCool = COOL_WINDOWS;
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute float winPane;\nvarying vec3 vWinId;')
+    .replace(
+      '#include <worldpos_vertex>',
+      `#include <worldpos_vertex>
+    // Het nummer van de ruit komt uit de vorm zelf (zie mergeSameMaterial) en niet uit de plek op het scherm,
+    // anders kan de grens van een vakje dwars door een ruit lopen. Een losse ruit zonder nummer heeft
+    // overal dezelfde waarde, dus ook die gaat in zijn geheel aan of uit.
+    // (+0.5: het afronden in de pixel-shader blijft zo veilig, ook met kleine rekenfoutjes)
+    vWinId = vec3(modelMatrix[3].x * 2.0, modelMatrix[3].z * 2.0, winPane) + 0.5;`,
+    );
+  shader.fragmentShader = shader.fragmentShader
+    .replace(
+      '#include <common>',
+      `#include <common>
+      varying vec3 vWinId;
+      uniform vec2 uLitShare;
+      uniform float uCool;
+      // Een vast toevalsgetal (0..1) uit drie hele getallen
+      float winHash(vec3 p) {
+        p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+        p += dot(p, p.yxz + 33.33);
+        return fract((p.x + p.y) * p.z);
+      }`,
+    )
+    .replace(
+      '#include <emissivemap_fragment>',
+      `#include <emissivemap_fragment>
+      {
+        vec3 id = floor(vWinId);
+        float house = winHash(vec3(id.xy, 0.0)), pane = winHash(id + vec3(0.0, 0.0, 7.0));
+        float evening = fract(pane * 7.13) < 0.7 ? house : pane;
+        float lit = float(evening < uLitShare.x) * float(fract(pane * 31.7) < uLitShare.y);
+        totalEmissiveRadiance *= lit * (0.65 + 0.7 * fract(house * 13.0)) * (0.9 + 0.2 * fract(pane * 5.3));
+        // Vanaf de moderne tijd brandt in ongeveer een op de tien ramen koeler licht (tl-buis, televisie)
+        float coolLight = float(fract(pane * 3.71) < 0.1) * uCool;
+        float grey = dot(totalEmissiveRadiance, vec3(0.2126, 0.7152, 0.0722));
+        totalEmissiveRadiance = mix(totalEmissiveRadiance, grey * vec3(0.8, 1.0, 1.3), coolLight * 0.8);
+      }`,
+    );
+}
+for (const m of [WIN, GLASS]) {
+  m.onBeforeCompile = windowShader;
+  // (ramen en glas hebben dezelfde shader-opbouw: ze mogen hetzelfde programma delen)
+  m.customProgramCacheKey = () => 'tp-window';
+}
+// De lampkop van de straatlantaarn en de rode bakens (kamptoren, Eiffeltoren, ogen van vijanden). mat() geeft
+// voor dezelfde kleur en opties hetzelfde materiaal terug, dus dit zijn precies die uit models.ts: zo kan
+// setCityNight ze 's nachts feller zetten zonder elk model langs te gaan.
+export const LAMPM = mat('#fff2c4', { e: '#fff2c4', ei: 0.2 }) as T3.MeshStandardMaterial;
+export const BEACONM = mat('#ff4a3a', { e: '#ff4a3a' }) as T3.MeshStandardMaterial;
+// Gedeelde waarden voor de lampkoppen: hoe donker het is, hoe fel een brandende kop dan is, en welke
+// lampen echt branden (hun vakjes; zie setLitLamps)
+// (evenveel als de lichtvlekken in lighting.ts, MAX_GLOWS: elke lamp met een vlek krijgt ook een felle kop;
+// twee vakjes per vec4, zodat het maar 48 plekken voor shaderwaarden kost)
+const MAX_LIT_LAMPS = 96;
+const LAMP_DARK = { value: 0 },
+  LAMP_BRIGHT = { value: 0 },
+  LIT_LAMP_CELLS = {
+    value: Array.from({ length: MAX_LIT_LAMPS / 2 }, () => new T3.Vector4(-1e4, -1e4, -1e4, -1e4)),
+  },
+  LIT_LAMP_COUNT = { value: 0 };
+LAMPM.emissiveIntensity = 1; // (de shader rekent de felheid zelf uit: 0.2 uit, feller als hij brandt)
+LAMPM.onBeforeCompile = shader => {
+  shader.uniforms.uDark = LAMP_DARK;
+  shader.uniforms.uLampBright = LAMP_BRIGHT;
+  shader.uniforms.uLitCells = LIT_LAMP_CELLS;
+  shader.uniforms.uLitCount = LIT_LAMP_COUNT;
+  shader.vertexShader = shader.vertexShader
+    .replace(
+      '#include <common>',
+      `#include <common>
+      uniform float uDark;
+      uniform vec4 uLitCells[${MAX_LIT_LAMPS / 2}];
+      uniform int uLitCount;
+      varying float vLampOn;
+      float lampHash(vec2 q) {
+        vec3 p = fract(q.xyx * 0.1031);
+        p += dot(p, p.yzx + 33.33);
+        return fract((p.x + p.y) * p.z);
+      }`,
+    )
+    .replace(
+      '#include <worldpos_vertex>',
+      `#include <worldpos_vertex>
+      // Het vakje waar de lamp staat (de kop zit midden in zijn vakje), en daarmee zijn eigen moment
+      vec2 lampCell = floor((modelMatrix * vec4(transformed, 1.0)).xz);
+      vLampOn = clamp((uDark - 0.05 - 0.4 * lampHash(lampCell)) / 0.03, 0.0, 1.0);
+      // Alleen een lamp die echt licht geeft (stroom, af, in de lijst van lighting.ts) krijgt een felle kop:
+      // anders lijkt een lamp zonder lichtvlek eronder toch te werken
+      float lampListed = 0.0;
+      for (int i = 0; i < ${MAX_LIT_LAMPS / 2}; i++) {
+        if (2 * i >= uLitCount) break;
+        vec4 cells = floor(uLitCells[i]);
+        if (all(equal(cells.xy, lampCell)) || all(equal(cells.zw, lampCell))) lampListed = 1.0;
+      }
+      vLampOn *= lampListed;`,
+    );
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <common>', '#include <common>\nuniform float uLampBright;\nvarying float vLampOn;')
+    .replace(
+      '#include <emissivemap_fragment>',
+      `#include <emissivemap_fragment>
+      // Een brandende kop warm geel-oranje, net als de ramen en de lichtvlek (anders wordt hij spierwit)
+      totalEmissiveRadiance *= (0.2 + vLampOn * uLampBright) * mix(vec3(1.0), vec3(1.0, 0.68, 0.32), vLampOn);`,
+    );
+};
+LAMPM.customProgramCacheKey = () => 'tp-lamp';
+/** De lampen die nu echt licht geven (de dichtstbijzijnde eerst): alleen hun koppen gloeien. */
+export function setLitLamps(lamps: readonly { x: number; y: number }[]): void {
+  const count = Math.min(MAX_LIT_LAMPS, lamps.length);
+  for (let i = 0; i < count; i++) {
+    const cells = LIT_LAMP_CELLS.value[i >> 1],
+      x = Math.floor(lamps[i].x),
+      y = Math.floor(lamps[i].y);
+    if (i % 2 === 0) cells.setX(x).setY(y);
+    else cells.setZ(x).setW(y);
+  }
+  LIT_LAMP_COUNT.value = count;
+}
+/**
+ * Een onzichtbaar groepje met de ramen, het glas en de lampkop op één platte driehoek. In de scène gezet
+ * maakt three.js bij het vooraf klaarmaken (compile) ook hun eigen shaders klaar, ook als er nog geen huis of
+ * lantaarn staat. Onzichtbaar wordt het nooit getekend, dus het kost verder niets.
+ */
+export function nightWarmup(): T3.Group {
+  const group = new T3.Group();
+  group.name = 'nightWarmup';
+  group.visible = false;
+  const flat = new T3.BufferGeometry();
+  flat.setAttribute('position', new T3.Float32BufferAttribute(new Float32Array(9), 3));
+  flat.computeVertexNormals();
+  for (const m of [WIN, GLASS, LAMPM]) {
+    const mesh = new T3.Mesh(flat, m);
+    mesh.frustumCulled = false;
+    group.add(mesh);
+  }
+  return group;
+}
+/**
+ * Licht in de stad bij donker (dk: 0 = dag, 0.78 = nacht; clock: uur van de dag; age: tijdperk). Alleen
+ * getallen erin, zodat de bouwdoos los blijft van de spelstand.
+ */
+export function setCityNight(dk: number, clock: number, age: number): void {
+  const [evening, night] = litShares(clock);
+  LIT_SHARE.value.set(evening, night);
+  COOL_WINDOWS.value = age >= 6 ? 1 : 0;
+  WIN.emissiveIntensity = GLASS.emissiveIntensity = dk > 0.02 ? 1.3 : 0;
+  // Een brandende lampkop: van 0.2 (overdag) tot 1.7 midden in de nacht, elke lamp op zijn eigen moment
+  LAMP_DARK.value = dk;
+  LAMP_BRIGHT.value = (dk / 0.78) * 1.5;
+  BEACONM.emissiveIntensity = 1 + (dk / 0.78) * 0.8;
+}
 // Gloeiende materialen voor het Sterrentijdperk: paars sterrenmetaal en roze fusie
 export const VIOLETM = new T3.MeshStandardMaterial({
   color: '#2a1f4a',

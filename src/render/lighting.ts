@@ -9,7 +9,7 @@ import { isCharging } from '../game/finale';
 import { season } from '../game/time';
 import { FAR_DIST, camDist, isFar } from './camera';
 import { GLOWS, glow } from './decals';
-import { GLASS, WIN } from './kit';
+import { lampSwitchAt, nightWarmup, setCityNight, setLitLamps } from './kit';
 import { FOL } from './nodes';
 import { CAM3, PL, R3, S3, SUN_DIR, cam, hemi, sun } from './scene';
 import { TMAT } from './terrain';
@@ -59,6 +59,8 @@ const MAX_GLOWS = 96;
 // Hangen de lampen (PL) nu in de scène, en zijn we "ver" voor de lampen? (zie lighting)
 let lampsIn = true,
   lampsFar = false;
+// Staan de onzichtbare ramen en lampkop voor het vooraf klaarmaken al in de scène? (zie lighting)
+let warmupAdded = false;
 /**
  * Lampen in of uit de scène halen betekent andere shaders (met of zonder puntlichten). Die van de nacht
  * maken we één keer vooraf klaar, bij het eerste beeldje: anders hapert het spel bij de eerste schemering.
@@ -226,19 +228,33 @@ export function lighting(dk: number) {
   // (mist en achtergrondkleur zijn gezet in scene.ts)
   S3.fog!.color.copy(fogNow);
   (S3.background as T3.Color).copy(fogNow);
-  WIN.emissiveIntensity = GLASS.emissiveIntensity = dk * 1.3;
+  setCityNight(dk, G.clock, G.age);
   setBloomDarkness(dk);
-  // Lampen rond het beeld, de dichtstbijzijnde eerst. Elk krijgt een lichtvlek op de grond (hooguit MAX_GLOWS:
-  // ver uitgezoomd zijn het er soms heel veel) en de dichtstbijzijnde zes ook echt licht.
-  const all = lights.filter(L => dist(L.x, L.y, cam.x, cam.y) < camDist() * 1.2);
+  // Elke lamp gaat op een eigen moment aan (vast per plek, binnen een tel van uit naar aan, samen met zijn
+  // lampkop): zo gaan de lampen 's avonds één voor één aan in plaats van allemaal tegelijk
+  const lampOn = (L: { x: number; y: number }) =>
+    Math.min(1, Math.max(0, (dk - lampSwitchAt(L.x, L.y)) / 0.03));
+  // Lampen rond het beeld die aan zijn, de dichtstbijzijnde eerst. Elk krijgt een lichtvlek op de grond
+  // (hooguit MAX_GLOWS: ver uitgezoomd zijn het er soms heel veel) en de dichtstbijzijnde zes ook echt licht.
+  const all = lights.filter(L => lampOn(L) > 0 && dist(L.x, L.y, cam.x, cam.y) < camDist() * 1.2);
   all.sort((a, b) => dist(a.x, a.y, cam.x, cam.y) - dist(b.x, b.y, cam.x, cam.y));
+  // Alleen de koppen van deze lampen gloeien: een lamp zonder stroom (en dus zonder lichtvlek) blijft dof
+  setLitLamps(all);
+  // Eén lichtvlek alvast maken (hieronder meteen weer verborgen): dan maakt precompileNightShaders ook zijn
+  // shader vooraf klaar, en komt er bij de eerste schemering op Laag geen enkele shader bij
+  if (!GLOWS.length) glow(0, true);
+  // Om dezelfde reden één keer onzichtbare ramen en een lampkop in de scène (zie nightWarmup in kit.ts)
+  if (!warmupAdded) {
+    warmupAdded = true;
+    S3.add(nightWarmup());
+  }
   let gi = 0;
   for (const L of all) {
-    if (dk < 0.05 || gi >= MAX_GLOWS) break;
+    if (gi >= MAX_GLOWS) break;
     const m = glow(gi++, L.warm);
     m.position.set(L.x, 0.04, L.y);
     m.scale.setScalar(L.r);
-    m.material.color.setScalar(dk * (L.warm ? 0.42 : 0.32));
+    m.material.color.setScalar(dk * (L.warm ? 0.42 : 0.32) * lampOn(L));
   }
   for (let i = gi; i < GLOWS.length; i++) GLOWS[i].visible = false;
   // Ver uitgezoomd geen echte lampen: die zouden maar een paar plekjes midden in beeld verlichten,
@@ -265,6 +281,6 @@ export function lighting(dk: number) {
     p.position.set(L.x, 1.3, L.y);
     p.distance = L.r * 1.9;
     p.color.set(L.warm ? '#ffa95a' : '#dfe8ff');
-    p.intensity = dk * (L.warm ? 0.95 : 1) * (1 + Math.sin(store.TM * 9 + i) * 0.05);
+    p.intensity = dk * (L.warm ? 0.95 : 1) * (1 + Math.sin(store.TM * 9 + i) * 0.05) * lampOn(L);
   });
 }
