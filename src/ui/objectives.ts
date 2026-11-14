@@ -109,9 +109,9 @@ export function renderChronicle() {
       return `${shown}<button id="ageToggle" aria-expanded="${open}"><span class="mt">Laatste tijdperk</span>${chevron}</button>${races}<div class="body"><p class="why">${CHAPTERS[G.age].s}</p>${folded}</div>`;
     const name = theAge(G.age + 1); // "de bronstijd", "het dronetijdperk"
     let fixBtn = '';
-    // Eerst wat er moet gebeuren (en waarom, als je de muis erop houdt), met een korte knop als dat kan
+    // Waarom het land nog niet lukt (de titel staat al op de coachbalk), met een korte knop als dat kan
     if (short)
-      fixBtn = `<p class="why" title="${esc(short.h)}">${esc(short.t)}</p>${fixAct ? `<button id="fixBtn" title="${esc(short.h)}">${esc(fixAct.l)}</button>` : ''}`;
+      fixBtn = `<p class="why fixwhy">${esc(short.h)}</p>${fixAct ? `<button id="fixBtn">${esc(fixAct.l)}</button>` : ''}`;
     else if (req.fix)
       fixBtn = `<button id="fixBtn" title="Er ligt nog geen ${RES[req.fix].n.toLowerCase()} binnen je grenzen">Gebied uitbreiden</button>`;
     const ageBtn = req.allReq ? `<button class="primary" id="ageBtn">Ga naar ${name} →</button>` : '';

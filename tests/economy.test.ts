@@ -182,6 +182,12 @@ describe('de markt als oplossing voor een tekort', () => {
     expect(marketFixFor({ food: 500, wood: 500, stone: 10, gold: 70 }, cost, trade, price)).toBeNull();
     expect(marketFixFor({ food: 500, wood: 500, stone: 10, gold: 80 }, cost, trade, price)?.kind).toBe('buy');
   });
+  it('koopt niet met goud dat voor het volgende tijdperk apart ligt', () => {
+    const cost = { food: 80, wood: 80, stone: 40 };
+    const res = { food: 500, wood: 500, stone: 10, gold: 200 };
+    expect(marketFixFor(res, cost, trade, price)?.kind).toBe('buy');
+    expect(marketFixFor(res, cost, trade, price, 200)).toBeNull();
+  });
   it('verkopen alleen als er na de verkoop nog genoeg over is', () => {
     const cost = { food: 80, wood: 80, stone: 40, gold: 20 };
     // 50 voedsel: te weinig om te verkopen (en het land heeft zelf 80 nodig)

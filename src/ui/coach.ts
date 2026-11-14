@@ -7,7 +7,7 @@ import { marketFixFor } from '../data/economy';
 import { CN } from '../config';
 import { avail } from '../game/caches';
 import { has, missingResources, waitReason } from '../game/economy';
-import { buildCost, canBuyChunk, chunkCost } from '../game/placement';
+import { buildCost, canBuyChunk, chunkCost, lackText } from '../game/placement';
 import { built } from '../game/chapters';
 import { popCap, popNow } from '../game/entities';
 import { compass, isMarching, isRaider } from '../game/military';
@@ -104,7 +104,9 @@ export function chunkShortStep(want: string): CoachStep | null {
   const why = `Uitbreiden (voor ${want}) kost ${costText(cost)}.`;
   const market = G.bs.find(b => b.type === 'market' && b.done);
   // Alleen een handel die nu echt lukt: genoeg goud om te kopen, of genoeg over om te verkopen
-  const fix = market && marketFixFor(G.res, cost, MARKET_RES, r => marketPrices(market, r).buy);
+  // (goud dat het volgende tijdperk nodig heeft, houdt hij apart: anders schuift het tekort alleen op)
+  const ageGold = AGE_UP[G.age + 1]?.cost.gold ?? 0;
+  const fix = market && marketFixFor(G.res, cost, MARKET_RES, r => marketPrices(market, r).buy, ageGold);
   if (market && fix) {
     const toMarket: CoachAct = { l: 'Naar de markt', k: 'sel', id: market.id };
     const name = RES[fix.r].n.toLowerCase();
@@ -120,12 +122,24 @@ export function chunkShortStep(want: string): CoachStep | null {
       act: toMarket,
     };
   }
-  const backup = backupSourceStep(short);
-  if (backup) return backup;
+  // Een steengroeve (of mijnschacht) die je nu kunt betalen, maakt het tekort er vanzelf bij.
+  // Geen backupSourceStep: hier is de grondstof niet op, het land is alleen nog te duur.
+  for (const [list, bld] of BACKUP) {
+    const r = short.find(k => list.includes(k));
+    if (!r || placed(bld) || !canMake(bld, G.age) || !ruleAllowsBuilding(bld) || !has(buildCost(bld)))
+      continue;
+    return {
+      t: `Bouw een ${B[bld].n.toLowerCase()}.`,
+      h: `${why} Een ${B[bld].n.toLowerCase()} maakt er vanzelf ${RES[r].n.toLowerCase()} bij.`,
+      tile: bld,
+      act: bAct(bld),
+    };
+  }
   const names = andJoin(short.map(k => RES[k].n.toLowerCase()));
   return {
     t: `Verzamel meer ${names}.`,
     h: `${why} Daarna kun je verderop zoeken.`,
+    wait: true,
   };
 }
 
@@ -137,6 +151,8 @@ interface CoachStep {
   /** De knop; leeg (of null) = geen knop. */
   act?: CoachAct | null;
   alarm?: boolean;
+  /** Echt even wachten (tot er genoeg verzameld is): alleen dan zet coach() er een tip bij. */
+  wait?: boolean;
 }
 
 // Waar komt grondstof k vandaan? Geeft een stap terug als de speler er iets voor moet doen.
@@ -210,13 +226,15 @@ function factoryStep(mk: string, k: string, left: string, goal: string): CoachSt
     title = `Nog ${left} ${name} nodig.`;
   const mine = G.bs.filter(b => b.type === mk);
   const working = mine.find(b => b.done);
-  if (!working) return { t: title, h: `De ${factory} wordt nog gebouwd. Daarna maakt hij ${name}.` };
+  if (!working)
+    return { t: title, h: `De ${factory} wordt nog gebouwd. Daarna maakt hij ${name}.`, wait: true };
   // Spaart hij een grondstof voor het volgende tijdperk (zie keptForGoal in game/buildings.ts)?
   if (working.saving) {
     const kept = RES[working.saving].n.toLowerCase();
     return {
       t: `Verzamel meer ${kept}.`,
       h: `De ${factory} bewaart ${kept} voor ${goal}. Met meer ${kept} maakt hij weer ${name} (nog ${left} nodig).`,
+      wait: true,
     };
   }
   // (mk is gevonden omdat hij iets maakt, dus conv bestaat zeker)
@@ -227,6 +245,7 @@ function factoryStep(mk: string, k: string, left: string, goal: string): CoachSt
     return {
       t: `Verzamel meer ${names}.`,
       h: `De ${factory} wacht op ${names}. Daarmee maakt hij ${name} (nog ${left} nodig voor ${goal}).`,
+      wait: true,
     };
   }
   const why = waitReason(working);
@@ -248,6 +267,7 @@ function factoryStep(mk: string, k: string, left: string, goal: string): CoachSt
       ? `De ${factory} maakt het vanzelf. ${more} ${factory} gaat sneller.`
       : `De ${factory} maakt het vanzelf${inputs ? `, zo snel als er ${inputs} ${comes}` : ''}.`,
     act: offerMore ? { l: `Bouw nog een ${factory}`, b: mk } : null,
+    wait: !offerMore,
   };
 }
 // Een aanval tijdens de finale: de poort moet heel blijven, dus laat zien hoe hij ervoor staat
@@ -323,10 +343,10 @@ function wantedNow(): string[] {
   return out;
 }
 
-/** De volgende stap voor de speler. Heeft die stap geen knop (even wachten), dan komt er een nuttige tip bij. */
+/** De volgende stap voor de speler. Is het even wachten (en is er geen knop), dan komt er een nuttige tip bij. */
 export function coach(): CoachStep {
   const step = nextStep();
-  if (step.act || step.alarm) return step;
+  if (!step.wait || step.act || step.alarm) return step;
   const tip = speedUpTip(wantedNow());
   return tip ? { ...step, h: `${step.h} ${tip.text}`, act: tip.act } : step;
 }
@@ -450,18 +470,26 @@ function nextStep(): CoachStep {
     const step = sourceStep(k, fmt(Math.ceil(nx.cost[k] - G.res[k])), NA);
     if (step) return step;
   }
-  if (pn < nx.pop)
+  if (pn < nx.pop) {
+    const townhall = G.bs.find(b => b.type === 'townhall');
+    if (G.autoTrain || !townhall)
+      return {
+        t: `Je stam groeit: ${pn} van ${nx.pop} inwoners.`,
+        h: 'Het stamhuis traint vanzelf dorpelingen zolang er voedsel is.',
+        wait: G.autoTrain,
+      };
     return {
       t: `Je stam groeit: ${pn} van ${nx.pop} inwoners.`,
-      h: G.autoTrain
-        ? 'Het stamhuis traint vanzelf dorpelingen zolang er voedsel is.'
-        : 'Train dorpelingen in het stamhuis.',
+      h: 'Train dorpelingen in het stamhuis.',
+      act: { l: 'Naar het stamhuis', k: 'sel', id: townhall.id },
     };
+  }
   const miss = lackList(nx);
   if (miss.length)
     return {
       t: `Op weg naar ${NA}.`,
       h: `Nog ${andJoin(miss)} nodig. Je dorpelingen verzamelen vanzelf.`,
+      wait: true,
     };
   return {
     t: `Klaar voor ${NA}!`,
@@ -470,12 +498,16 @@ function nextStep(): CoachStep {
   };
 }
 
-// De beste toren die je nu kunt bouwen én betalen, of undefined
-function payableTower(): string | undefined {
-  return BKEYS.filter(
-    k => B[k].def && B[k].cat === 'mil' && !B[k].nobuild && canMake(k, G.age) && has(buildCost(k)),
-  ).sort((a, b) => B[b].age - B[a].age)[0];
+// De toren(s) die dit tijdperk kent, de nieuwste eerst
+function towersNow(): string[] {
+  return BKEYS.filter(k => B[k].def && B[k].cat === 'mil' && !B[k].nobuild && canMake(k, G.age)).sort(
+    (a, b) => B[b].age - B[a].age,
+  );
 }
+// De beste toren die je nu kunt bouwen, of undefined
+const bestTower = (): string | undefined => towersNow()[0];
+// De beste toren die je nu kunt bouwen én betalen, of undefined
+const payableTower = (): string | undefined => towersNow().find(k => has(buildCost(k)));
 // De beste soldaat die de kazerne nu kan trainen én die je kunt betalen, of undefined
 function payableSoldier(): string | undefined {
   return Object.keys(UNITS)
@@ -502,23 +534,31 @@ function defenseTip(): { text: string; act: CoachAct; tile?: string } | null {
 function raidPrepStep(): CoachStep | null {
   const tip = defenseTip();
   if (tip) return { t: 'Vannacht komt een aanval.', h: tip.text, tile: tip.tile, act: tip.act };
-  // Huizen vol: soldaten hebben ook een plek nodig
+  // Huizen vol: soldaten hebben ook een plek nodig (alleen een knop als je de woning kunt betalen)
   const house = bestHouse();
-  if (popNow() >= popCap() && house)
+  if (popNow() >= popCap() && house) {
+    const houseName = B[house].n.toLowerCase();
+    if (has(buildCost(house)))
+      return {
+        t: 'Vannacht komt een aanval.',
+        h: `Bouw eerst een ${houseName}: er is geen plek voor soldaten.`,
+        tile: house,
+        act: bAct(house),
+      };
     return {
       t: 'Vannacht komt een aanval.',
-      h: `Bouw eerst een ${B[house].n.toLowerCase()}: er is geen plek voor soldaten.`,
-      tile: house,
-      act: bAct(house),
+      h: `Er is geen plek voor soldaten. Voor een ${houseName} heb je nog ${lackText(buildCost(house))} nodig.`,
+      wait: true,
     };
+  }
   return null;
 }
 
 /** Vanaf dit uur waarschuwt de coach voor de kampioen van vannacht (de aanval komt om 21 uur). */
 const CHAMPION_WARN_HOUR = 12;
 
-// Vandaag is een aanvalsdag, de kampioen komt mee en je verdediging is nog dun: waarschuw 's middags,
-// en alleen met iets wat je nu kunt doen (anders gaat de coach gewoon verder; de melding om 18:30 waarschuwt ook)
+// Vandaag is een aanvalsdag, de kampioen komt mee en je verdediging is nog dun: waarschuw 's middags.
+// Met een knop als je nu iets kunt doen; anders zegt hij wat er voor een toren nog mist.
 function championStep(): CoachStep | null {
   if (G.peaceful || !raidNight() || G.clock < CHAMPION_WARN_HOUR || G.clock >= 21) return null;
   const boss = bossComesTonight();
@@ -526,13 +566,23 @@ function championStep(): CoachStep | null {
   const towers = G.bs.filter(b => b.done && b.type !== 'townhall' && B[b.type].def).length;
   // Dun: minder dan zes "punten" verdediging, waarbij een toren voor twee soldaten telt
   if (G.us.length + towers * 2 >= 6) return null;
+  const threat = `${bossName(boss)} leidt de aanval, met ${BOSS_HP}× levens en ${BOSS_DMG}× schade.`;
   const tip = defenseTip();
-  if (!tip) return null;
+  if (tip)
+    return {
+      t: `Vannacht: ${boss.n}!`,
+      h: `${threat} ${tip.text}`,
+      tile: tip.tile,
+      act: tip.act,
+      alarm: true,
+    };
+  const tower = bestTower();
+  const advice = tower
+    ? `Voor een ${B[tower].n.toLowerCase()} heb je nog ${lackText(buildCost(tower))} nodig.`
+    : 'Houd je soldaten bij het stamhuis.';
   return {
     t: `Vannacht: ${boss.n}!`,
-    h: `${bossName(boss)} leidt de aanval, met ${BOSS_HP}× levens en ${BOSS_DMG}× schade. ${tip.text}`,
-    tile: tip.tile,
-    act: tip.act,
+    h: `${threat} ${advice} Je dorpelingen schuilen in het stamhuis.`,
     alarm: true,
   };
 }
@@ -594,7 +644,7 @@ function lastAgeStep(): CoachStep {
     };
   }
   if (built('stargate')) return { t: 'De sterrenpoort staat.', h: 'Bouw gerust verder.' };
-  if (placed('stargate')) return { t: 'De sterrenpoort wordt gebouwd.', h: 'Nog even geduld.' };
+  if (placed('stargate')) return { t: 'De sterrenpoort wordt gebouwd.', h: 'Nog even geduld.', wait: true };
   const cost = B.stargate.cost;
   for (const k in cost) {
     if (G.res[k] >= cost[k]) continue;

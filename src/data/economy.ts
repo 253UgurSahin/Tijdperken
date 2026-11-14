@@ -99,13 +99,15 @@ export interface MarketFix {
  * Kan de markt een tekort voor `cost` oplossen, met de voorraad `res`? Mist er goud, dan verkoop je iets
  * waar je na de verkoop nog genoeg van overhoudt voor `cost` zelf. Mist er iets anders, dan koop je het,
  * maar alleen met goud dat `cost` zelf niet nodig heeft. `tradable`: wat de markt handelt (MARKET_RES),
- * `buyPrice`: wat 100 stuks kosten. Geeft null als de markt nu niets kan doen.
+ * `buyPrice`: wat 100 stuks kosten, `reserveGold`: goud dat ook apart blijft (zoals voor het volgende tijdperk).
+ * Geeft null als de markt nu niets kan doen.
  */
 export function marketFixFor(
   res: Record<string, number>,
   cost: Cost,
   tradable: string[],
   buyPrice: (r: string) => number,
+  reserveGold = 0,
 ): MarketFix | null {
   const has = (r: string) => res[r] || 0;
   const short = Object.keys(cost).filter(k => has(k) < cost[k]);
@@ -113,7 +115,7 @@ export function marketFixFor(
     const spare = tradable.find(r => has(r) - (cost[r] || 0) >= MARKET_LOT);
     return spare ? { kind: 'sell', r: spare } : null;
   }
-  const freeGold = has('gold') - (cost.gold || 0);
+  const freeGold = has('gold') - (cost.gold || 0) - reserveGold;
   const buy = short.find(r => tradable.includes(r) && freeGold >= buyPrice(r));
   return buy ? { kind: 'buy', r: buy } : null;
 }
