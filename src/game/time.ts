@@ -6,7 +6,7 @@ import { seasonIndex } from '../data/modifiers';
 import { raidSize, spawnRaid } from './military';
 import { dayPace, hasRule } from './mods';
 import { G } from './state';
-import { bossFled, liveBoss, pendingBoss } from './bosses';
+import { bossComesTonight, bossFled } from './bosses';
 import { isCharging } from './finale';
 import { bossName } from '../data/bosses';
 import { FINALE_SIDES } from '../data/finale';
@@ -108,18 +108,20 @@ function raidWarning(radio: boolean): string {
   if (radio) return `Radio: vannacht valt een groep van ±${raidSize()} aan${ledBy()}.`;
   return `Er naderen vijanden${ledBy()}. Vannacht volgt een aanval.`;
 }
-// ", geleid door Grimnar de Verscheurder" als de kampioen meekomt met de aanval van vannacht
+// ", geleid door Grimnar de Verscheurder" als de kampioen echt meekomt met de aanval van vannacht
 function ledBy(): string {
-  const boss = pendingBoss();
-  return boss && !liveBoss() ? `, geleid door ${bossName(boss)}` : '';
+  const boss = bossComesTonight();
+  return boss ? `, geleid door ${bossName(boss)}` : '';
 }
-export function hoursUntilRaid(): number | null {
+/** De volgende aanval: over hoeveel uur op de klok, en op welke dag (of null: geen aanval gepland). */
+export function nextRaid(): { hours: number; day: number } | null {
   // De dag begint om 6 uur (dan gaat G.day omhoog); een aanval komt om 21 uur, dus 15 uur na het begin van
   // zijn dag. Tussen middernacht en 6 uur is de aanval van "deze dag" dus al geweest.
   const sinceDayStart = (G.clock - 6 + 24) % 24;
   for (let k = 0; k < 6; k++) {
     const until = 15 + 24 * k - sinceDayStart;
-    if (until > 0 && raidNight(G.day + k)) return until;
+    if (until > 0 && raidNight(G.day + k)) return { hours: until, day: G.day + k };
   }
   return null;
 }
+export const hoursUntilRaid = (): number | null => nextRaid()?.hours ?? null;

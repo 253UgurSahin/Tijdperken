@@ -5,6 +5,7 @@ import { AGES, AGE_MAT, AGE_UP } from '../src/data/ages';
 import { B } from '../src/data/buildings';
 import { NODES } from '../src/data/nodes';
 import { tradePrices } from '../src/data/resources';
+import { CHUNK_GOLD_AGE, chunkCostFor } from '../src/data/economy';
 import { canMake } from '../src/data/succession';
 import { TECH } from '../src/data/tech';
 import { FOES, UNITS, bonusMul } from '../src/data/units';
@@ -131,5 +132,22 @@ describe('markt', () => {
           const { buy, sell } = tradePrices(r, level, marketMul);
           expect(sell, `${r} niveau ${level} bonus ${marketMul.toFixed(2)}`).toBeLessThan(buy);
         }
+  });
+});
+
+describe('uitbreiden', () => {
+  it('vraagt nooit staal, en voor de Gouden Eeuw alleen voedsel, hout en steen', () => {
+    for (let age = 0; age < AGES.length; age++)
+      for (let bought = 0; bought <= 10; bought++) {
+        const cost = chunkCostFor(age, bought, 1);
+        const what = `tijdperk ${age}, ${bought} gekocht`;
+        expect(cost.steel, what).toBeUndefined();
+        const allowed = age >= CHUNK_GOLD_AGE ? ['food', 'wood', 'stone', 'gold'] : ['food', 'wood', 'stone'];
+        for (const k of Object.keys(cost)) expect(allowed, what).toContain(k);
+      }
+  });
+  it('goud vraagt het pas als je een markt hebt kunnen bouwen (nodig voor de Gouden Eeuw)', () => {
+    expect(AGE_UP[CHUNK_GOLD_AGE]!.need).toContain('market');
+    expect(B.market.age).toBeLessThan(CHUNK_GOLD_AGE);
   });
 });

@@ -6,7 +6,7 @@ import { B } from '../../data/buildings';
 import { FOES, UNITS } from '../../data/units';
 import { bossForAge, bossName } from '../../data/bosses';
 import { FINALE_SIDES } from '../../data/finale';
-import { liveBoss, pendingBoss } from '../../game/bosses';
+import { bossComesTonight, liveBoss } from '../../game/bosses';
 import { isCharging } from '../../game/finale';
 import { has } from '../../game/economy';
 import { isMarching, isRaider, raidSize } from '../../game/military';
@@ -16,7 +16,7 @@ import { bestVeteran, rankName } from '../../data/army';
 import { repairBuildings, repairCost } from '../../game/repair';
 import { arrivalHour, clockText } from '../../game/rivals';
 import { G, sel } from '../../game/state';
-import { hoursUntilRaid } from '../../game/time';
+import { hoursUntilRaid, nextRaid } from '../../game/time';
 import { bMaxHp } from '../../game/upgrades';
 import { selectArmy } from '../../input/input';
 import { clearSel } from '../../input/selection';
@@ -52,10 +52,10 @@ function raidCardText(raidNow: number, marching: Foe[], hrs: number | null, secs
   if (secs == null) title = 'Geen aanval gepland';
   // secs is alleen leeg als hrs leeg is, dus hier is hrs er zeker
   else if (hrs! <= 0.01) title = 'Aanval begint';
-  // Komt er een kampioen mee, of komen ze tijdens de finale uit drie richtingen? Dan staat dat erbij.
-  const boss = pendingBoss();
-  const extra =
-    (boss && !live ? ` · met ${boss.n}` : '') + (isCharging() ? ` · uit ${FINALE_SIDES} richtingen` : '');
+  // Komt er echt een kampioen mee, of komen ze tijdens de finale uit drie richtingen? Dan staat dat erbij.
+  const raidDay = nextRaid()?.day;
+  const boss = raidDay == null ? null : bossComesTonight(raidDay);
+  const extra = (boss ? ` · met ${boss.n}` : '') + (isCharging() ? ` · uit ${FINALE_SIDES} richtingen` : '');
   const sub = `±${raidSize()} ${FOES[G.age].n.toLowerCase()}${extra}${G.speed ? '' : ' · gepauzeerd'}`;
   return { title, sub };
 }

@@ -8,7 +8,7 @@ import { AGES } from '../data/ages';
 import { B } from '../data/buildings';
 import { NODES } from '../data/nodes';
 import { PEOPLE } from '../data/peoples';
-import { GATHER, RES } from '../data/resources';
+import { GATHER, MARKET_RES, RES } from '../data/resources';
 import { UNITS } from '../data/units';
 import { avail, computeCaches, powerDem, powerRatio, powerSup, siteCnt } from '../game/caches';
 import { gain, has, pay, waitReason } from '../game/economy';
@@ -483,8 +483,7 @@ export function renderInspector() {
     if (d.market)
       h +=
         '<div class="trade">' +
-        ['food', 'wood', 'stone', 'copper', 'tin', 'iron', 'coal', 'sand', 'lithium']
-          .filter(r => RES[r].age <= G.age)
+        MARKET_RES.filter(r => RES[r].age <= G.age)
           .map(r => {
             const { buy, sell } = marketPrices(b, r);
             return `<span>${gem(r)}${RES[r].n}</span><button data-buy="${r}" ${G.res.gold >= buy ? '' : 'disabled'} title="Koop 100 voor ${buy} goud">Koop ${buy}</button><button data-sell="${r}" ${G.res[r] >= 100 ? '' : 'disabled'} title="Verkoop 100 voor ${sell} goud">Verkoop ${sell}</button>`;

@@ -1,28 +1,32 @@
-// Kampioenen in het spel: wie de eerste aanval na een nieuw tijdperk leidt, en wat je krijgt als je hem verslaat.
+// Kampioenen in het spel: wie een aanval na een nieuw tijdperk leidt, wanneer hij komt, en wat je krijgt als je hem verslaat.
 import type { Foe } from '../types';
 import { store } from '../core/store';
 import { SET } from '../core/settings';
 import { sfx } from '../audio/sound';
-import { BOSS_DMG, BOSS_HP, bossForAge, bossName } from '../data/bosses';
+import { BOSS_DMG, BOSS_HP, bossForAge, bossName, bossReady } from '../data/bosses';
 import type { BossDef } from '../data/bosses';
 import { burst, floater, fxRing } from './fx';
 import { hasRule } from './mods';
+import { isPracticeRaid } from './military';
 import { G } from './state';
 import { note, toast } from '../ui/hud';
 
 /*
- * G.boss: de kampioen die nog moet komen, als { age }, of null. Hij blijft staan tot je hem verslaat:
+ * G.boss: de kampioen die nog moet komen, als { age, day }, of null. Hij blijft staan tot je hem verslaat:
  * vlucht hij bij zonsopgang (of laad je een opgeslagen spel), dan komt hij terug met de volgende aanval.
  * Een kampioen in het veld is een gewone vijand (in G.foes) met boss: zijn tijdperk.
  */
 
-/** Een nieuw tijdperk: de kampioen van dit tijdperk leidt de volgende aanval (niet in de vredige modus). */
+/**
+ * Een nieuw tijdperk: de kampioen van dit tijdperk leidt binnenkort een aanval (niet in de vredige modus).
+ * Hij komt pas na een rustige nacht, zodat je tijd hebt om je voor te bereiden (zie bossReady in data/bosses.ts).
+ */
 export function bossAfterAgeUp(): void {
   const boss = bossForAge(G.age);
   // Zonder leger (spelregel van een uitdaging) zou hij niet te verslaan zijn
   if (!boss || G.peaceful || hasRule('noArmy')) return;
-  G.boss = { age: G.age };
-  note(`Er gaan geruchten: ${bossName(boss)} leidt de volgende aanval.`, 'bad');
+  G.boss = { age: G.age, day: G.day };
+  note(`Er gaan geruchten: ${bossName(boss)} leidt binnenkort een aanval.`, 'bad');
 }
 
 /** De kampioen die nog moet komen, of null. */
@@ -32,12 +36,19 @@ export const pendingBoss = (): BossDef | null => (G && G.boss && !G.peaceful ? b
 export const liveBoss = (): Foe | null =>
   G ? G.foes.find(f => f.boss && !f.dead && !f.retreat) || null : null;
 
-/** Gaat de kampioen mee met deze aanval? Alleen als hij er nog niet is (in het veld of op weg). */
-export function bossForRaid(): BossDef | null {
+/**
+ * Komt de kampioen mee met de aanval van dag `raidDay`, aanval nummer `raidNumber`? Alleen als hij er nog
+ * niet is (in het veld of op weg) en klaar is (zie bossReady). Zo kondigt het spel nooit een kampioen aan
+ * die niet komt: de waarschuwing, de aanvalskaart en de coach vragen het hier allemaal.
+ */
+export function bossComesTonight(raidDay = G.day, raidNumber = G.raids + 1): BossDef | null {
   const boss = pendingBoss();
-  if (!boss || liveBoss() || G.spawnQ.some(s => s.boss)) return null;
-  return boss;
+  if (!boss || !G.boss || liveBoss() || G.spawnQ.some(s => s.boss)) return null;
+  return bossReady(G.boss, raidDay, isPracticeRaid(raidNumber)) ? boss : null;
 }
+
+/** Gaat de kampioen mee met deze aanval (nummer `raidNumber`, die nu begint)? */
+export const bossForRaid = (raidNumber: number): BossDef | null => bossComesTonight(G.day, raidNumber);
 
 /** Maak van een net verschenen vijand de kampioen: taaier en sterker, met een naam boven zijn hoofd. */
 export function makeBoss(f: Foe, age: number): void {

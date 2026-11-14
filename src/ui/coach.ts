@@ -2,26 +2,29 @@ import type { AgeUpDef, CoachAct, Foe } from '../types';
 // De "coach": kiest steeds één duidelijke volgende stap voor de speler.
 import { AGE_UP } from '../data/ages';
 import { B, BKEYS } from '../data/buildings';
-import { GATHER, RES } from '../data/resources';
+import { GATHER, MARKET_RES, RES } from '../data/resources';
 import { CN } from '../config';
 import { avail } from '../game/caches';
-import { missingResources } from '../game/economy';
-import { canBuyChunk } from '../game/placement';
+import { has, missingResources, waitReason } from '../game/economy';
+import { buildCost, canBuyChunk, chunkCost } from '../game/placement';
 import { built } from '../game/chapters';
 import { popCap, popNow } from '../game/entities';
 import { compass, isMarching, isRaider } from '../game/military';
 import { arrivalHour, clockText, rivalById } from '../game/rivals';
 import { RIVAL, verb } from '../data/rivals';
 import { ruleAllowsBuilding } from '../game/mods';
+import { marketPrices } from '../game/upgrades';
 import { G } from '../game/state';
-import { hoursUntilRaid, isNight } from '../game/time';
+import { hoursUntilRaid, isNight, raidNight } from '../game/time';
 import { fmt, theAge } from './format';
+import { costText } from './buildmenu';
 import { VICTORY } from '../data/victories';
 import { victoryGoals } from '../game/victory';
 import { canMake } from '../data/succession';
-import { bossForAge, bossName } from '../data/bosses';
+import { UNITS } from '../data/units';
+import { BOSS_DMG, BOSS_HP, bossForAge, bossName } from '../data/bosses';
 import { chargeFrac, chargePercent, nightsLeft } from '../data/finale';
-import { liveBoss } from '../game/bosses';
+import { bossComesTonight, liveBoss } from '../game/bosses';
 import { finishedGate, gateHealth, isCharging } from '../game/finale';
 
 export const placed = (k: string): boolean => G.bs.some(b => b.type === k);
@@ -54,6 +57,8 @@ function goneStep(): CoachStep | null {
   // Geen land meer te koop: dan is er een gebouw dat de grondstof uit het niets maakt (of de markt)
   if (!canGrow) return backupSourceStep(gone);
   const names = andJoin(gone.map(k => RES[k].n.toLowerCase()));
+  const short = chunkShortStep(names);
+  if (short) return short;
   return {
     t: 'Breid je gebied uit.',
     h: `Er is geen ${names} meer in je gebied, en je hebt het nodig. Verderop ligt meer.`,
@@ -86,6 +91,43 @@ function backupSourceStep(gone: string[]): CoachStep | null {
   return null;
 }
 
+/**
+ * Kun je het volgende stuk land nog niet betalen? Dan zegt deze stap waar je het tekort vandaan haalt,
+ * zodat "Breid je gebied uit" nooit een knop is die niets doet. `want`: wat je verderop zoekt ("kolen").
+ * Geeft null als uitbreiden nu kan.
+ */
+export function chunkShortStep(want: string): CoachStep | null {
+  const cost = chunkCost();
+  if (has(cost)) return null;
+  const short = Object.keys(cost).filter(k => G.res[k] < cost[k]);
+  const why = `Uitbreiden (voor ${want}) kost ${costText(cost)}.`;
+  const market = G.bs.find(b => b.type === 'market' && b.done);
+  if (market) {
+    const toMarket: CoachAct = { l: 'Naar de markt', k: 'sel', id: market.id };
+    // Goud koop je niet: dat krijg je door iets te verkopen, en voedsel raakt nooit op
+    if (short.includes('gold'))
+      return {
+        t: 'Verkoop voedsel op de markt voor goud.',
+        h: `${why} Je mist nog ${fmt(Math.ceil(cost.gold - G.res.gold))} goud.`,
+        act: toMarket,
+      };
+    const buy = short.find(k => MARKET_RES.includes(k));
+    if (buy)
+      return {
+        t: `Koop ${RES[buy].n.toLowerCase()} op de markt.`,
+        h: `${why} Je mist nog ${fmt(Math.ceil(cost[buy] - G.res[buy]))} ${RES[buy].n.toLowerCase()}.`,
+        act: toMarket,
+      };
+  }
+  const backup = backupSourceStep(short);
+  if (backup) return backup;
+  const names = andJoin(short.map(k => RES[k].n.toLowerCase()));
+  return {
+    t: `Verzamel meer ${names}.`,
+    h: `${why} Daarna kun je verderop zoeken.`,
+  };
+}
+
 /** Eén stap van de coach: titel, uitleg, eventueel een gebouw om aan te wijzen, een knop en alarm. */
 interface CoachStep {
   t: string;
@@ -108,19 +150,23 @@ function sourceStep(k: string, left: string, goal: string, depth = 0): CoachStep
       act: expandAct(k),
     };
   if (GATHER.includes(k) && !avail[k])
-    return {
-      t: 'Breid je gebied uit.',
-      h: `Er ligt nog geen ${name} binnen je grenzen. Je hebt er nog ${left} nodig voor ${goal}.`,
-      act: expandAct(k),
-    };
+    return (
+      chunkShortStep(name) || {
+        t: 'Breid je gebied uit.',
+        h: `Er ligt nog geen ${name} binnen je grenzen. Je hebt er nog ${left} nodig voor ${goal}.`,
+        act: expandAct(k),
+      }
+    );
   // Olie verzamel je niet met de hand: daar is een oliepomp op een oliebron voor
   if (k === 'oil') {
     if (!avail.oil)
-      return {
-        t: 'Zoek een oliebron.',
-        h: 'Olie zit onder woestijnen en kusten. Breid je gebied uit tot er een oliebron in ligt.',
-        act: expandAct(k),
-      };
+      return (
+        chunkShortStep('olie') || {
+          t: 'Zoek een oliebron.',
+          h: 'Olie zit onder woestijnen en kusten. Breid je gebied uit tot er een oliebron in ligt.',
+          act: expandAct(k),
+        }
+      );
     if (!placed('oilpump'))
       return {
         t: 'Plaats een oliepomp.',
@@ -147,11 +193,60 @@ function sourceStep(k: string, left: string, goal: string, depth = 0): CoachStep
     const step = sourceStep(r, 'wat', goal, depth + 1);
     if (step) return step;
   }
+  return factoryStep(mk, k, left, goal);
+}
+
+/** Zoveel fabrieken van één soort raadt de coach hooguit aan. */
+const MAX_FACTORIES = 6;
+/** Een extra fabriek raadt hij pas aan als er voor zoveel rondes van elke grondstof die erin gaat op voorraad is. */
+const INPUT_STOCK = 30;
+
+// De fabriek voor grondstof k staat er al, maar er is nog te weinig. Wat houdt hem tegen? Zeg dát, en
+// bied alleen een tweede fabriek aan als de eerste echt draait (anders helpt een tweede niets).
+function factoryStep(mk: string, k: string, left: string, goal: string): CoachStep {
+  const name = RES[k].n.toLowerCase(),
+    factory = B[mk].n.toLowerCase(),
+    title = `Nog ${left} ${name} nodig.`;
+  const mine = G.bs.filter(b => b.type === mk);
+  const working = mine.find(b => b.done);
+  if (!working) return { t: title, h: `De ${factory} wordt nog gebouwd. Daarna maakt hij ${name}.` };
+  // Spaart hij een grondstof voor het volgende tijdperk (zie keptForGoal in game/buildings.ts)?
+  if (working.saving) {
+    const kept = RES[working.saving].n.toLowerCase();
+    return {
+      t: `Verzamel meer ${kept}.`,
+      h: `De ${factory} bewaart ${kept} voor ${goal}. Met meer ${kept} maakt hij weer ${name} (nog ${left} nodig).`,
+    };
+  }
+  // (mk is gevonden omdat hij iets maakt, dus conv bestaat zeker)
+  const need = B[mk].conv!.in;
+  const missing = Object.keys(need).filter(r => G.res[r] < need[r]);
+  if (working.starved && missing.length) {
+    const names = andJoin(missing.map(r => RES[r].n.toLowerCase()));
+    return {
+      t: `Verzamel meer ${names}.`,
+      h: `De ${factory} wacht op ${names}. Daarmee maakt hij ${name} (nog ${left} nodig voor ${goal}).`,
+    };
+  }
+  const why = waitReason(working);
+  if (why && !working.plenty)
+    return {
+      t: title,
+      h: `De ${factory} staat stil: ${why.toLowerCase()}.`,
+      act: { l: `Bekijk de ${factory}`, k: 'sel', id: working.id },
+    };
+  // Een extra fabriek helpt alleen als er genoeg ingaat: anders is die grondstof de rem, niet de fabriek
+  const plentyIn = Object.keys(need).every(r => G.res[r] >= need[r] * INPUT_STOCK);
+  const offerMore = plentyIn && mine.length < MAX_FACTORIES && canMake(mk, G.age) && ruleAllowsBuilding(mk);
+  const more = mine.length > 1 ? 'Nog een' : 'Een tweede';
+  const inputs = andJoin(Object.keys(need).map(r => RES[r].n.toLowerCase())),
+    comes = Object.keys(need).length > 1 ? 'binnenkomen' : 'binnenkomt';
   return {
-    t: `Nog ${left} ${name} nodig.`,
-    h: inp.length
-      ? `De ${B[mk].n.toLowerCase()} wacht op ${inp.map(r => RES[r].n.toLowerCase()).join(' en ')}.`
-      : `De ${B[mk].n.toLowerCase()} maakt het vanzelf. Een tweede ${B[mk].n.toLowerCase()} gaat twee keer zo snel.`,
+    t: title,
+    h: offerMore
+      ? `De ${factory} maakt het vanzelf. ${more} ${factory} gaat sneller.`
+      : `De ${factory} maakt het vanzelf${inputs ? `, zo snel als er ${inputs} ${comes}` : ''}.`,
+    act: offerMore ? { l: `Bouw nog een ${factory}`, b: mk } : null,
   };
 }
 // Een aanval tijdens de finale: de poort moet heel blijven, dus laat zien hoe hij ervoor staat
@@ -168,7 +263,66 @@ function finaleRaidStep(raid: number, boss: Foe | null): CoachStep {
     alarm: true,
   };
 }
+// Moet je even wachten tot er genoeg is? Dan toch iets nuttigs om te doen: meer dorpelingen verzamelen
+// sneller (een woning als die bijna vol zit), en meer akkers houden iedereen gevoed. Alleen wat je kunt betalen.
+function speedUpTip(want: string[]): { text: string; act: CoachAct } | null {
+  // Met een markt en genoeg goud koop je wat je mist meteen
+  const market = G.bs.find(b => b.type === 'market' && b.done);
+  const buy = market && want.find(r => MARKET_RES.includes(r) && G.res.gold >= marketPrices(market, r).buy);
+  if (market && buy)
+    return {
+      text: `Of koop ${RES[buy].n.toLowerCase()} op de markt.`,
+      act: { l: 'Naar de markt', k: 'sel', id: market.id },
+    };
+  const house = bestHouse();
+  if (house && popCap() - popNow() < 2 && ruleAllowsBuilding(house) && has(buildCost(house)))
+    return {
+      text: `Met een extra ${B[house].n.toLowerCase()} komen er meer dorpelingen bij.`,
+      act: bAct(house),
+    };
+  const farms = G.bs.filter(b => b.type === 'farm').length;
+  if (farms * 4 < G.vs.length && canMake('farm', G.age) && has(buildCost('farm')))
+    return { text: 'Een extra akker houdt iedereen gevoed.', act: bAct('farm') };
+  // Een steengroeve of mijnschacht maakt de grondstof er vanzelf bij, zonder arbeiders
+  for (const [list, bld] of BACKUP) {
+    const r = want.find(k => list.includes(k));
+    if (r && !placed(bld) && canMake(bld, G.age) && ruleAllowsBuilding(bld) && has(buildCost(bld)))
+      return {
+        text: `Een ${B[bld].n.toLowerCase()} maakt er vanzelf ${RES[r].n.toLowerCase()} bij.`,
+        act: bAct(bld),
+      };
+  }
+  // Een opslagplaats dicht bij wat je verzamelt scheelt lopen (een paar, meer helpt weinig)
+  const far = want.find(r => r !== 'food' && GATHER.includes(r));
+  const stores = G.bs.filter(b => b.type === 'storage').length;
+  if (far && stores < 2 + G.age / 2 && canMake('storage', G.age) && has(buildCost('storage'))) {
+    const where = far === 'wood' ? 'de bomen' : `het ${RES[far].n.toLowerCase()}`;
+    return { text: `Een extra opslagplaats bij ${where} scheelt lopen.`, act: bAct('storage') };
+  }
+  return null;
+}
+
+// Wat je nu mist voor het volgende tijdperk, plus wat er in de fabrieken gaat die het missende maken
+function wantedNow(): string[] {
+  const nx = AGE_UP[G.age + 1];
+  if (!nx) return [];
+  const out = Object.keys(nx.cost).filter(k => G.res[k] < nx.cost[k]);
+  for (const k of [...out]) {
+    const mk = BKEYS.find(b => B[b].conv && B[b].conv.out[k]);
+    if (mk) out.push(...Object.keys(B[mk].conv!.in));
+  }
+  return out;
+}
+
+/** De volgende stap voor de speler. Heeft die stap geen knop (even wachten), dan komt er een nuttige tip bij. */
 export function coach(): CoachStep {
+  const step = nextStep();
+  if (step.act || step.alarm) return step;
+  const tip = speedUpTip(wantedNow());
+  return tip ? { ...step, h: `${step.h} ${tip.text}`, act: tip.act } : step;
+}
+
+function nextStep(): CoachStep {
   const nx = AGE_UP[G.age + 1],
     NA = nx ? theAge(G.age + 1) : '', // met lidwoord: "de bronstijd", "het dronetijdperk"
     pn = popNow(),
@@ -193,10 +347,15 @@ export function coach(): CoachStep {
     };
   const marching = G.foes.filter(isMarching);
   if (marching.length) return marchStep(marching);
+  // De kampioen komt vannacht: dat gaat voor de lamp en de rest
+  const champion = championStep();
+  if (champion) return champion;
   const lit = G.bs.some(b => b.type !== 'townhall' && B[b.type].light && !B[b.type].gen);
   const dark = G.vs.filter(v => v.state === 'sleep' || (v.state === 'walk' && v.on === 'sleep')).length;
   const lamp = BKEYS.find(k => B[k].cat === 'light' && B[k].light && !B[k].gen && canMake(k, G.age));
-  if (isNight() && dark && !lit && lamp)
+  // Is het volgende tijdperk al binnen? Dan wint "Klaar voor ...": de lamp kan wachten
+  const ageReady = !!nx && lackList(nx).length === 0;
+  if (isNight() && dark && !lit && lamp && !ageReady)
     return {
       t: `Het is donker: ${dark} ${dark === 1 ? 'dorpeling stopt' : 'dorpelingen stoppen'} met werken.`,
       h: `Bij een ${B[lamp].n.toLowerCase()} werken ze ’s nachts door. Zet het bij de bomen of akkers.`,
@@ -206,24 +365,9 @@ export function coach(): CoachStep {
   const hrs = hoursUntilRaid();
   if (!G.peaceful && hrs != null && hrs < 7.5) {
     const def = G.bs.some(b => b.type !== 'townhall' && B[b.type].def);
-    const bar = G.bs.find(b => b.type === 'barracks' && b.done);
     if (!def && G.us.length < 3) {
-      if (bar)
-        return {
-          t: 'Vannacht komt een aanval.',
-          h: 'Train een paar soldaten in de kazerne, of bouw een toren bij het stamhuis.',
-          act: { l: 'Naar de kazerne', k: 'sel', id: bar.id },
-        };
-      const tw = BKEYS.filter(k => B[k].def && B[k].cat === 'mil' && !B[k].nobuild && canMake(k, G.age)).sort(
-        (a, b) => B[b].age - B[a].age,
-      )[0];
-      if (tw)
-        return {
-          t: 'Vannacht komt een aanval.',
-          h: `Bouw een ${B[tw].n.toLowerCase()} bij het stamhuis om je dorp te verdedigen.`,
-          tile: tw,
-          act: bAct(tw),
-        };
+      const prep = raidPrepStep();
+      if (prep) return prep;
     }
   }
   if (G.age === 0) {
@@ -314,6 +458,68 @@ export function coach(): CoachStep {
     t: `Klaar voor ${NA}!`,
     h: 'Alles is binnen. Zet de stap naar een nieuw tijdperk.',
     act: { l: `Naar ${NA}`, k: 'age' },
+  };
+}
+
+// De beste toren die je nu kunt bouwen én betalen, of undefined
+function payableTower(): string | undefined {
+  return BKEYS.filter(
+    k => B[k].def && B[k].cat === 'mil' && !B[k].nobuild && canMake(k, G.age) && has(buildCost(k)),
+  ).sort((a, b) => B[b].age - B[a].age)[0];
+}
+// De beste soldaat die de kazerne nu kan trainen én die je kunt betalen, of undefined
+function payableSoldier(): string | undefined {
+  return Object.keys(UNITS)
+    .filter(k => UNITS[k].src === 'barracks' && canMake(k, G.age, G.people) && has(UNITS[k].cost))
+    .sort((a, b) => UNITS[b].age - UNITS[a].age)[0];
+}
+// Eén ding dat je nú kunt doen voor je verdediging: een soldaat trainen (als er plek is) of een toren bouwen.
+// Alleen wat dit tijdperk nog kent en wat je kunt betalen: zo stuurt de coach je nooit naar een grijze knop.
+function defenseTip(): { text: string; act: CoachAct; tile?: string } | null {
+  const bar = G.bs.find(b => b.type === 'barracks' && b.done);
+  const soldier = bar && popNow() < popCap() ? payableSoldier() : undefined;
+  if (bar && soldier)
+    return {
+      text: `Train een ${UNITS[soldier].n.toLowerCase()} in de kazerne.`,
+      act: { l: 'Naar de kazerne', k: 'sel', id: bar.id },
+    };
+  const tower = payableTower();
+  if (tower)
+    return { text: `Bouw een ${B[tower].n.toLowerCase()} bij het stamhuis.`, act: bAct(tower), tile: tower };
+  return null;
+}
+
+// Vannacht komt er een aanval en je hebt nog niets om je te verdedigen
+function raidPrepStep(): CoachStep | null {
+  const tip = defenseTip();
+  if (tip) return { t: 'Vannacht komt een aanval.', h: tip.text, tile: tip.tile, act: tip.act };
+  // Huizen vol: soldaten hebben ook een plek nodig
+  const house = bestHouse();
+  if (popNow() >= popCap() && house)
+    return {
+      t: 'Vannacht komt een aanval.',
+      h: `Bouw eerst een ${B[house].n.toLowerCase()}: er is geen plek voor soldaten.`,
+      tile: house,
+      act: bAct(house),
+    };
+  return null;
+}
+
+// Vandaag is een aanvalsdag, de kampioen komt mee en je verdediging is nog dun: waarschuw op tijd
+function championStep(): CoachStep | null {
+  if (G.peaceful || !raidNight() || G.clock < 6 || G.clock >= 21) return null;
+  const boss = bossComesTonight();
+  if (!boss) return null;
+  const towers = G.bs.filter(b => b.done && b.type !== 'townhall' && B[b.type].def).length;
+  // Dun: minder dan zes "punten" verdediging, waarbij een toren voor twee soldaten telt
+  if (G.us.length + towers * 2 >= 6) return null;
+  const tip = defenseTip();
+  return {
+    t: `Vannacht: ${boss.n}!`,
+    h: `${bossName(boss)} leidt de aanval, met ${BOSS_HP}× levens en ${BOSS_DMG}× schade. ${tip ? tip.text : 'Spaar voor soldaten of een toren.'}`,
+    tile: tip?.tile,
+    act: tip?.act ?? null,
+    alarm: true,
   };
 }
 

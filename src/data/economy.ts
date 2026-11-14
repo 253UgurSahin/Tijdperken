@@ -1,5 +1,6 @@
 // Rekenregels voor de economie, zonder spelstand: hoeveel je van een grondstof wilt hebben, wie wat gaat
 // halen, wanneer een fabriek pauzeert en hoeveel noodstroom het stamhuis geeft. Puur, dus te testen.
+import type { Cost } from '../types';
 
 /** Zoveel minuten verbruik wil je op voorraad: van fabrieken, centrales en wat je volk en leger eten. */
 export const STOCK_MINUTES = 3;
@@ -66,3 +67,21 @@ export const plentyOf = (stock: number, wanted: number, pausedNow: boolean): boo
 export const BASE_POWER = 5;
 export const BASE_POWER_AGE = 5;
 export const basePower = (age: number): number => (age >= BASE_POWER_AGE ? BASE_POWER : 0);
+
+/** Vanaf dit tijdperk kost uitbreiden ook goud: om er te komen heb je een markt nodig (goud koop je met voedsel). */
+export const CHUNK_GOLD_AGE = 4;
+/** Vanaf dit tijdperk is het goud voor uitbreiden de helft duurder (in plaats van staal te vragen). */
+export const CHUNK_DEARER_AGE = 5;
+
+/**
+ * Wat een nieuw stuk land kost. `bought`: hoeveel stukken je al kocht (elk stuk wordt duurder),
+ * `factor`: bonussen (zoals Zeekaarten) die uitbreiden goedkoper maken (1 = geen bonus).
+ * Nooit staal: dat maak je met kolen, en kolen moet je misschien juist eerst met uitbreiden vinden.
+ */
+export function chunkCostFor(age: number, bought: number, factor: number): Cost {
+  const grow = 1 + bought * 0.55;
+  const cost: Cost = { food: 80 * grow, wood: 80 * grow, stone: 40 * grow };
+  if (age >= CHUNK_GOLD_AGE) cost.gold = 12 * grow * (age >= CHUNK_DEARER_AGE ? 1.5 : 1);
+  for (const k in cost) cost[k] = Math.round(cost[k] * factor);
+  return cost;
+}

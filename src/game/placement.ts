@@ -23,6 +23,7 @@ import { toast } from '../ui/hud';
 import { demolish } from '../ui/inspector';
 import { TER, amt, bmap, inb, isUnl, node, nodeVis, road, ter } from '../world/world';
 import { SUCCESSOR, canMake } from '../data/succession';
+import { chunkCostFor } from '../data/economy';
 
 /** Wat een gebouw nu kost. Muren en poorten worden goedkoper door bonussen (zoals 'wall.cost'). */
 export function buildCost(type: string): Cost {
@@ -33,16 +34,8 @@ export function buildCost(type: string): Cost {
   for (const k in d.cost) cost[k] = Math.round(d.cost[k] * factor);
   return cost;
 }
-export function chunkCost(): Cost {
-  const m = 1 + G.bought * 0.55,
-    c: Cost = { food: Math.round(80 * m), wood: Math.round(80 * m), stone: Math.round(40 * m) };
-  if (G.age >= 3) c.gold = Math.round(12 * m);
-  if (G.age >= 5) c.steel = Math.round(5 * m);
-  // Bonussen (zoals Zeekaarten) maken uitbreiden goedkoper
-  const factor = mul('chunk.cost');
-  if (factor !== 1) for (const k in c) c[k] = Math.round(c[k] * factor);
-  return c;
-}
+/** Wat het volgende stuk land kost (zie chunkCostFor in data/economy.ts). Bonussen maken het goedkoper. */
+export const chunkCost = (): Cost => chunkCostFor(G.age, G.bought, mul('chunk.cost'));
 export function canBuyChunk(cx: number, cy: number): boolean {
   if (cx < 0 || cy < 0 || cx >= CN || cy >= CN || G.unl[cy * CN + cx]) return false;
   // Land van een rivaal kun je niet kopen: dat moet je veroveren (verwoest zijn stamhuis)
