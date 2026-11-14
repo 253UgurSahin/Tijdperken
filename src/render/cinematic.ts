@@ -2,11 +2,15 @@
 // Beweeg je zelf de camera (slepen, zoomen, minikaart), dan stopt het meteen; na schuiven glijdt je eigen
 // zoom vanzelf terug. Een klik of toets laat hem snel terugkeren naar waar je was. Met "Animaties" uit
 // (instellingen) gebeurt er niets. Hoe het 3D-beeld gedraaid staat (store.yaw) verandert het nooit.
+// Ook hier: de vlucht van het titelscherm naar het spel ("Verder spelen", zie startGlide).
 import type { GameState } from '../types';
 import { SET } from '../core/settings';
 import { G } from '../game/state';
 import { ZOOM_MIN } from '../input/input';
-import { clampCam } from './camera';
+import { clampCam, pitchAt, setTitleView } from './camera';
+import type { PlayCamera } from './camera';
+import { viewYaw } from '../core/view';
+import { TAU } from '../config';
 import { cam } from './scene';
 
 const OUT = 1.4, // seconden: uitzoomen naar het stamhuis
@@ -65,6 +69,7 @@ export function startAgeCinematic(): void {
 
 /** Een klik of toets tijdens het moment: snel terug naar waar je was. */
 function hurryBack(): void {
+  hurryGlide();
   if (!shot || shot.quick || !shot.set) return;
   shot.quick = { start: performance.now() / 1000, from: { x: cam.x, y: cam.y, d: 1 / cam.z } };
 }
@@ -74,7 +79,7 @@ for (const type of ['pointerdown', 'keydown']) addEventListener(type, hurryBack,
  * Heeft iets anders de camera verplaatst sinds het vorige beeldje? Dan is de camera weer van de speler.
  * 'zoom': de speler zoomde zelf. 'move': hij schoof of sprong naar een plek (minikaart). '': niets.
  */
-function playerTookOver(s: Shot): 'zoom' | 'move' | '' {
+function playerTookOver(s: { set: { x: number; y: number; z: number } | null }): 'zoom' | 'move' | '' {
   const set = s.set;
   if (!set) return '';
   if (cam.tz != null || Math.abs(cam.z - set.z) > 1e-4) return 'zoom';
@@ -84,6 +89,7 @@ function playerTookOver(s: Shot): 'zoom' | 'move' | '' {
 
 /** Elk beeldje, vóór de camera wordt neergezet. `now` in seconden. */
 export function stepCinematic(now: number): void {
+  stepGlide(now);
   if (!shot) return;
   // Een ander spel geladen of begonnen: dat zet de camera zelf goed neer
   if (shot.game !== G) {
@@ -125,5 +131,103 @@ export function stepCinematic(now: number): void {
   if (done) shot = null;
 }
 
+/** Stop het moment meteen, met de camera weer waar de speler was (het titelscherm gaat open). */
+export function stopCinematic(): void {
+  if (!shot) return;
+  cam.x = shot.from.x;
+  cam.y = shot.from.y;
+  cam.z = 1 / shot.from.d;
+  shot = null;
+}
+
 /** Loopt het moment nog? */
 export const inCinematic = (): boolean => !!shot;
+
+// ---- Glijden van het titelshot naar het spel ("Verder spelen") ----
+
+/** Een stand met ook de draaiing (yaw) en hoe schuin de camera kijkt (pitch). */
+interface ViewPose extends Pose {
+  yaw: number;
+  pitch: number;
+}
+/** De lopende glijvlucht: van waar, naar waar, hoe lang, en wat we het vorige beeldje zelf zetten. */
+interface Glide {
+  start: number;
+  dur: number;
+  from: ViewPose;
+  to: ViewPose;
+  set: { x: number; y: number; z: number } | null;
+}
+let glide: Glide | null = null;
+const HURRY = 0.4; // seconden: de rest van de vlucht na een klik of toets
+
+/**
+ * Glijd in `dur` seconden van het titelshot (`from`) naar de camera van de speler (`to`).
+ * Aan het eind staat de camera precies op `to`, met de gewone kanteling en draaiing van het spel.
+ * Met "Animaties" uit springt hij meteen.
+ */
+export function startGlide(from: { pitch: number; yaw: number }, to: PlayCamera, dur = 1.2): void {
+  shot = null;
+  const end: ViewPose = { x: to.x, y: to.y, d: 1 / to.z, yaw: viewYaw(), pitch: pitchAt(to.z) };
+  if (!SET.motion) {
+    finish(end);
+    return;
+  }
+  // Langs de kortste weg draaien: het verschil tussen -180° en +180°
+  const turn = ((((end.yaw - from.yaw + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+  glide = {
+    start: performance.now() / 1000,
+    dur,
+    from: { x: cam.x, y: cam.y, d: 1 / cam.z, yaw: end.yaw - turn, pitch: from.pitch },
+    to: end,
+    set: null,
+  };
+  cam.tx = cam.ty = cam.tz = null;
+  setTitleView({ pitch: from.pitch, yaw: end.yaw - turn });
+}
+// Klaar (of afgebroken): de camera precies op het doel en het gewone beeld weer aan
+function finish(end: Pose): void {
+  glide = null;
+  setTitleView(null);
+  cam.x = end.x;
+  cam.y = end.y;
+  cam.z = 1 / end.d;
+  cam.tx = cam.tz = null;
+  clampCam();
+}
+// Een klik of toets tijdens de vlucht: de rest gaat snel
+function hurryGlide(): void {
+  if (!glide || !glide.set) return;
+  const now = performance.now() / 1000,
+    k = smooth(Math.min(1, (now - glide.start) / glide.dur));
+  glide.from = mixView(glide.from, glide.to, k);
+  glide.start = now;
+  glide.dur = Math.min(HURRY, glide.dur);
+}
+const mixView = (a: ViewPose, b: ViewPose, k: number): ViewPose => ({
+  ...mixPose(a, b, k),
+  yaw: a.yaw + (b.yaw - a.yaw) * k,
+  pitch: a.pitch + (b.pitch - a.pitch) * k,
+});
+function stepGlide(now: number): void {
+  if (!glide) return;
+  // Zoomt of schuift de speler zelf, dan is de camera meteen weer van hem (met het gewone beeld)
+  if (playerTookOver(glide)) {
+    glide = null;
+    setTitleView(null);
+    return;
+  }
+  const k = Math.min(1, (now - glide.start) / glide.dur);
+  if (k >= 1) {
+    finish(glide.to);
+    return;
+  }
+  const pose = mixView(glide.from, glide.to, smooth(k));
+  cam.x = pose.x;
+  cam.y = pose.y;
+  cam.z = 1 / pose.d;
+  setTitleView({ pitch: pose.pitch, yaw: pose.yaw });
+  glide.set = { x: cam.x, y: cam.y, z: cam.z };
+}
+/** Loopt de vlucht van het titelscherm naar het spel nog? */
+export const inGlide = (): boolean => !!glide;

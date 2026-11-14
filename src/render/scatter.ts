@@ -4,9 +4,9 @@ import * as T3 from 'three';
 import { H, TAU, W } from '../config';
 import { G } from '../game/state';
 import { hash2 } from '../util/random';
-import { camDist } from './camera';
+import { camDist, s2t } from './camera';
 import { WIND } from './nodes';
-import { S3, cam } from './scene';
+import { S3, VH, VW, cam } from './scene';
 import { groundVersion } from './terrainlook';
 import { BIOME, TER, biome, bmap, ground, node, road, ter } from '../world/world';
 import { settled } from '../game/rivals';
@@ -165,8 +165,10 @@ const _m = new T3.Matrix4(),
 export function updateScatter() {
   if (!density) return;
   const d = camDist(),
-    // Ver uitgezoomd: kleiner gebied en minder dicht; nog verder: helemaal niets
-    R = Math.min(28, d * 1.2),
+    // Tot de verste hoek van het beeld op de grond: een gekantelde camera kijkt ver vooruit, ook op een breed
+    // scherm. Ver uitgezoomd: minder dicht (zie thin); nog verder: helemaal niets.
+    corners = [s2t(0, 0), s2t(VW, 0), s2t(VW, VH), s2t(0, VH)],
+    R = Math.min(28, Math.max(...corners.map(([x, y]) => Math.hypot(x - cam.x, y - cam.y)))),
     visible = d < 40;
   for (const m of Object.values(KINDS)) m.visible = visible && (m !== KINDS.flower || flowersOn);
   if (!visible) return;

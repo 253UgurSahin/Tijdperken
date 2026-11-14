@@ -14,12 +14,30 @@ export const camDist = () => 27 / cam.z;
 export const FAR_DIST = 27 / 0.35;
 /** Zijn we verder uitgezoomd dan vroeger kon? Dan tekenen we eenvoudiger (minder schaduw, stippen voor figuren). */
 export const isFar = () => camDist() > FAR_DIST * 1.05;
-// Hoe schuin de camera kijkt (bovenaanzicht bijna recht omlaag) en hoe hij gedraaid staat (zie core/view.ts)
-const PITCH = () => (store.V2 ? 1.5 : 0.9),
-  YAW = viewYaw;
+// Hoe de camera gedraaid staat (zie core/view.ts)
+const YAW = viewYaw;
+// Rustig op gang komen en rustig ophouden tussen a en b (0 ervoor, 1 erna)
+const smoothstep = (a: number, b: number, v: number): number => {
+  const k = clamp((v - a) / (b - a), 0, 1);
+  return k * k * (3 - 2 * k);
+};
+/**
+ * Hoe schuin de camera kijkt bij zoom z (radialen boven de grond). Bovenaanzicht (2D): bijna recht omlaag.
+ * In 3D kantelt hij bij inzoomen naar de horizon, zodat je gevels en boomstammen ziet in plaats van daken.
+ */
+export function pitchAt(z: number): number {
+  if (store.V2) return 1.5;
+  const k = smoothstep(Math.log(1.05), Math.log(2.4), Math.log(z));
+  return Math.max(0.6, 0.9 - 0.28 * k);
+}
+/**
+ * De kanteling nu. Elke keer opnieuw uit cam.z berekend (niet bijgehouden): het zoomen rond de muis rekent
+ * tussen twee beeldjes met s2t, en dan moet de kanteling al bij de nieuwe zoom horen.
+ */
+export const viewPitch = (): number => pitchAt(cam.z);
 export function updateCamera() {
-  const p = PITCH(),
-    y = YAW(),
+  const p = titleView ? titleView.pitch : viewPitch(),
+    y = titleView ? titleView.yaw : YAW(),
     d = camDist();
   let tx = cam.x,
     tz = cam.y;
@@ -34,7 +52,7 @@ export function updateCamera() {
   // en schemert het water door de oever heen (witte randen om elk meer). Dichtbij blijft het 0,5.
   const near = Math.max(0.5, d * 0.55 - 25);
   // En het beeld houdt op waar de mist alles verbergt: wat daarachter ligt, hoeft niet getekend te worden
-  const far = d * 2.9 + 2;
+  const far = d * 3.3 + 2;
   if (CAM3.near !== near || CAM3.far !== far) {
     CAM3.near = near;
     CAM3.far = far;
@@ -55,9 +73,11 @@ export function updateCamera() {
   sun.target.position.set(cam.x, 0, cam.y);
   sun.target.updateMatrixWorld();
   snapShadow(sc);
+  // Zachte nevel in de verte. Hoe lager de camera kijkt, hoe verder weg hij pas begint: anders wordt het
+  // dorp zelf al wazig zodra je inzoomt.
   const fog = S3.fog as T3.Fog;
-  fog.near = d * 1.15;
-  fog.far = d * 2.9;
+  fog.near = d * (0.95 + (0.9 - p) * 1.2);
+  fog.far = d * 3.3;
 }
 /**
  * De schaduwkaart schuift mee met de camera. Schuift hij een halve pixel (van de kaart) op, dan verspringen
@@ -140,7 +160,7 @@ export function panScreen(dx: number, dy: number) {
     rz = -Math.sin(y),
     fx = -Math.sin(y),
     fz = -Math.cos(y),
-    k = store.V2 ? 1 : 1 / Math.sin(PITCH());
+    k = store.V2 ? 1 : 1 / Math.sin(viewPitch());
   cam.x += (-dx * rx + dy * fx * -k) * f;
   cam.y += (-dx * rz + dy * fz * -k) * f;
   cam.tx = null;
@@ -184,5 +204,62 @@ export function updateTurn(rdt: number) {
   if (Math.abs(store.tyaw - store.yaw) < 0.001) {
     store.yaw = wrapYaw(store.tyaw);
     store.tyaw = null;
+  }
+}
+
+// ---- Het titelscherm: een langzaam draaiend, laag shot van je dorp ----
+
+/** Hoe de camera op het titelscherm kijkt: kanteling en draaiing. Alleen voor het beeld, niet voor het spel. */
+export interface TitleView {
+  pitch: number;
+  yaw: number;
+}
+let titleView: TitleView | null = null;
+/**
+ * Zet het titelbeeld (of null: weer het gewone beeld). Het verandert alleen hoe de camera kijkt;
+ * store.yaw en de instellingen blijven zoals de speler ze had.
+ */
+export function setTitleView(view: TitleView | null): void {
+  titleView = view;
+}
+/** Het titelbeeld nu (ook tijdens de overgang ervandaan naar het spel), of null. */
+export const currentTitleView = (): TitleView | null => titleView;
+
+/** Waar de speler keek voor het titelscherm openging: daar gaat "Verder spelen" weer heen. */
+export interface PlayCamera {
+  x: number;
+  y: number;
+  z: number;
+}
+let playCamera: PlayCamera | null = null;
+/** Onthoud de camera van de speler (één keer, bij het openen van het titelscherm). */
+export function rememberPlayCamera(): void {
+  if (playCamera) return;
+  // Glijdt de camera nog ergens heen, dan is dat doel de plek van de speler (cam.ty hoort alleen bij cam.tx)
+  const gliding = cam.tx != null;
+  playCamera = { x: gliding ? cam.tx! : cam.x, y: gliding ? cam.ty! : cam.y, z: cam.tz ?? cam.z };
+}
+/** De onthouden camera van de speler, of null. */
+export const savedPlayCamera = (): PlayCamera | null => playCamera;
+/** Vergeet de onthouden camera (na het laden of beginnen van een ander spel zet dat zelf de camera neer). */
+export function forgetPlayCamera(): void {
+  playCamera = null;
+}
+/**
+ * Doe iets (zoals opslaan) met de camera van de speler in plaats van die van het titelscherm,
+ * en zet daarna het titelbeeld terug. Zo bewaart een opslag nooit het draaiende titelshot.
+ */
+export function withPlayCamera<R>(job: () => R): R {
+  if (!playCamera) return job();
+  const now = { x: cam.x, y: cam.y, z: cam.z };
+  cam.x = playCamera.x;
+  cam.y = playCamera.y;
+  cam.z = playCamera.z;
+  try {
+    return job();
+  } finally {
+    cam.x = now.x;
+    cam.y = now.y;
+    cam.z = now.z;
   }
 }
