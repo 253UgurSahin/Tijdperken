@@ -831,7 +831,21 @@ export function chim(g: T3.Object3D, x: number, y: number, z: number, h = 0.3, c
   top.userData.chim = 1;
   g.add(top);
 }
-export function flame(g: T3.Object3D, x: number, y: number, z: number, s = 1) {
+/** Soort fabrieksrook: dikke donkere kolenrook, snelle witte stoom of laag beige stof. */
+export type StackStyle = 'coal' | 'steam' | 'dust';
+// Onzichtbaar puntje bovenop een fabrieksschoorsteen: hier komt rook uit, maar alleen zolang de fabriek
+// werkt (zie chimneySmoke in sync.ts)
+export function stack(g: T3.Object3D, x: number, y: number, z: number, style: StackStyle) {
+  const top = new T3.Object3D();
+  top.position.set(x, y, z);
+  top.userData.chim = style;
+  g.add(top);
+}
+/**
+ * Een vlammetje. `open` = een open vuur (kampvuur, fakkel) dat vonken en rook geeft; anders zit het in een
+ * dicht lantaarnhuisje en flakkert het alleen (zie fireFx in sync.ts).
+ */
+export function flame(g: T3.Object3D, x: number, y: number, z: number, s = 1, open = true) {
   const f = new T3.Group();
   f.position.set(x, y, z);
   const a = new T3.Mesh(gCyl(0, 0.09 * s, 6), FIREM);
@@ -840,9 +854,15 @@ export function flame(g: T3.Object3D, x: number, y: number, z: number, s = 1) {
   const b = new T3.Mesh(gCyl(0, 0.05 * s, 6), FIREM2);
   b.scale.y = 0.16 * s;
   f.add(b);
-  f.userData.fire = 1;
+  f.userData.fire = open ? 'open' : 'lamp';
+  f.userData.size = s;
   g.add(f);
   return f;
+}
+// Alle vlammen delen één materiaal: één keer per beeldje de tint een klein beetje laten schuiven, dan
+// flakkeren ze allemaal tussen dieper oranje en geler
+export function fireFlicker(t: number) {
+  FIREM.color.setHSL(0.07 + 0.01 * Math.sin(t * 13), 1, 0.6);
 }
 export const C = {
   wood: '#8a6a44',

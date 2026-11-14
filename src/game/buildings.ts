@@ -151,16 +151,7 @@ export function bUpdate(b: Building, dt: number): void {
       }
     }
   }
-  if (b.act > 0 && (d.conv || (d.gen && !d.gen.solar)) && Math.random() < dt * 3)
-    G.fx.push({
-      type: 'smoke',
-      x: b.x + d.size * 0.62,
-      y: b.y + d.size * 0.3,
-      z: d.h * 0.9,
-      vz: 14,
-      life: 2.6,
-      max: 2.6,
-    });
+  // (De rook van een werkende fabriek komt uit zijn echte schoorstenen: zie chimneySmoke in render/sync.ts)
 }
 
 /**
