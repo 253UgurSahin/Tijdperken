@@ -7,8 +7,8 @@ import type { GameState } from '../types';
 import { SET } from '../core/settings';
 import { G } from '../game/state';
 import { ZOOM_MIN } from '../input/input';
-import { clampCam, pitchAt, setTitleView } from './camera';
-import type { PlayCamera } from './camera';
+import { PLAY_REACH, clampCam, pitchAt, setTitleView } from './camera';
+import type { PlayCamera, TitleView } from './camera';
 import { viewYaw } from '../core/view';
 import { TAU } from '../config';
 import { cam } from './scene';
@@ -153,6 +153,7 @@ export const inCinematic = (): boolean => !!shot;
 interface ViewPose extends Pose {
   yaw: number;
   pitch: number;
+  reach: number;
 }
 /**
  * De lopende glijvlucht: van waar, naar waar, hoe lang, en wat we het vorige beeldje zelf zetten.
@@ -174,9 +175,16 @@ const HURRY = 0.4; // seconden: de rest van de vlucht na een klik of toets
  * Aan het eind staat de camera precies op `to`, met de gewone kanteling en draaiing van het spel.
  * Met "Animaties" uit springt hij meteen.
  */
-export function startGlide(from: { pitch: number; yaw: number }, to: PlayCamera, dur = 1.2): void {
+export function startGlide(from: TitleView, to: PlayCamera, dur = 1.2): void {
   shot = null;
-  const end: ViewPose = { x: to.x, y: to.y, d: 1 / to.z, yaw: viewYaw(), pitch: pitchAt(to.z) };
+  const end: ViewPose = {
+    x: to.x,
+    y: to.y,
+    d: 1 / to.z,
+    yaw: viewYaw(),
+    pitch: pitchAt(to.z),
+    reach: PLAY_REACH,
+  };
   if (!SET.motion) {
     finish(end);
     return;
@@ -186,13 +194,13 @@ export function startGlide(from: { pitch: number; yaw: number }, to: PlayCamera,
   glide = {
     start: performance.now() / 1000,
     dur,
-    from: { x: cam.x, y: cam.y, d: 1 / cam.z, yaw: end.yaw - turn, pitch: from.pitch },
+    from: { x: cam.x, y: cam.y, d: 1 / cam.z, yaw: end.yaw - turn, pitch: from.pitch, reach: from.reach },
     to: end,
     set: null,
     viewOnly: false,
   };
   cam.tx = cam.ty = cam.tz = null;
-  setTitleView({ pitch: from.pitch, yaw: end.yaw - turn });
+  setTitleView({ pitch: from.pitch, yaw: end.yaw - turn, reach: from.reach });
 }
 // Klaar (of afgebroken): de camera precies op het doel en het gewone beeld weer aan
 function finish(end: Pose): void {
@@ -217,6 +225,8 @@ const mixView = (a: ViewPose, b: ViewPose, k: number): ViewPose => ({
   ...mixPose(a, b, k),
   yaw: a.yaw + (b.yaw - a.yaw) * k,
   pitch: a.pitch + (b.pitch - a.pitch) * k,
+  // Ook hoe ver het beeld reikt: anders verspringt de mist bovenin op het laatste beeldje van de vlucht
+  reach: a.reach + (b.reach - a.reach) * k,
 });
 function stepGlide(now: number): void {
   if (!glide) return;
@@ -237,7 +247,7 @@ function stepGlide(now: number): void {
     if (k >= 1) {
       glide = null;
       setTitleView(null);
-    } else setTitleView({ pitch: pose.pitch, yaw: pose.yaw });
+    } else setTitleView({ pitch: pose.pitch, yaw: pose.yaw, reach: pose.reach });
     return;
   }
   if (k >= 1) {
@@ -248,7 +258,7 @@ function stepGlide(now: number): void {
   cam.x = pose.x;
   cam.y = pose.y;
   cam.z = 1 / pose.d;
-  setTitleView({ pitch: pose.pitch, yaw: pose.yaw });
+  setTitleView({ pitch: pose.pitch, yaw: pose.yaw, reach: pose.reach });
   glide.set = { x: cam.x, y: cam.y, z: cam.z };
 }
 /** Loopt de vlucht van het titelscherm naar het spel nog? */

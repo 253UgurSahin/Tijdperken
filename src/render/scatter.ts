@@ -161,7 +161,7 @@ const _m = new T3.Matrix4(),
   _up = new T3.Vector3(0, 1, 0),
   _c = new T3.Color();
 
-// De vier hoeken van het beeld (als deel van breedte en hoogte), vast zodat er elk beeldje niets nieuws nodig is
+// De vier hoeken van het beeld, als deel van de breedte en de hoogte
 const CORNERS: [number, number][] = [
   [0, 0],
   [1, 0],

@@ -87,6 +87,7 @@ import { G, newGame, sel } from './game/state';
 import { rememberPositions, update } from './game/update';
 import { drag, keys, mouse, refreshMouseTile, setView } from './input/input';
 import {
+  TITLE_REACH,
   TURN_SPEED,
   clampCam,
   forgetPlayCamera,
@@ -128,7 +129,7 @@ import { tickMusic } from './audio/music';
 import { darkness } from './game/time';
 import { isRaider } from './game/military';
 import { setColorBlind } from './render/kit';
-import { initQuality, tickQuality } from './render/quality';
+import { COARSE, initQuality, tickQuality } from './render/quality';
 import { precompileNightShaders } from './render/lighting';
 import { setSpeed, toast } from './ui/hud';
 import { AGES } from './data/ages';
@@ -200,8 +201,13 @@ function tick(now: number) {
   if (!titleEl.hidden) orbitTitle(rdt);
   else if (titleYaw !== null) {
     // Het titelscherm is dicht (meestal via leaveTitle, die zelf de camera terugzet of laat glijden)
+    // Ging het anders (bijv. een script), zet dan zelf de camera van de speler terug
     titleYaw = null;
-    if (!inGlide()) setTitleView(null);
+    const home = savedPlayCamera();
+    if (!inGlide()) {
+      if (home) Object.assign(cam, home);
+      setTitleView(null);
+    }
     forgetPlayCamera();
   }
   if (cam.tx != null) {
@@ -327,7 +333,10 @@ function tick(now: number) {
 }
 // ---- Het titelscherm: een laag shot van je dorp, met een camera die langzaam rond het stamhuis draait ----
 let titleYaw: number | null = null; // de draaiing van het titelshot; null als het titelscherm dicht is
-const COARSE = matchMedia('(pointer:coarse)').matches;
+// Kanteling en zoom van het titelshot per kwaliteit
+const WIDE_TITLE = { pitch: 0.5, z: 0.8 },
+  MID_TITLE = { pitch: 0.6, z: 0.85 },
+  LIGHT_TITLE = { pitch: 0.7, z: 0.9 };
 function orbitTitle(rdt: number) {
   if (titleYaw === null) {
     // Net open: de camera van de speler onthouden ("Verder spelen" glijdt daarheen terug)
@@ -336,10 +345,10 @@ function orbitTitle(rdt: number) {
     titleYaw = store.yaw;
   }
   if (SET.motion) titleYaw += rdt * 0.03;
-  // Alleen op "hoog" het wijde lage shot. Op "middel", "laag" en op een telefoon of tablet: steiler en
-  // dichterbij, dan is er veel minder wereld te tekenen (het wijde shot heeft drie keer zoveel driehoeken).
-  const light = store.quality !== 'high' || COARSE;
-  const pitch = light ? 0.7 : 0.5;
+  // Op "hoog" het wijde lage shot. Op "laag" en op een telefoon of tablet: steiler en dichterbij, dan is er
+  // veel minder wereld te tekenen (het wijde shot heeft drie keer zoveel driehoeken). "Middel" zit ertussenin.
+  const pose =
+    store.quality === 'low' || COARSE ? LIGHT_TITLE : store.quality === 'mid' ? MID_TITLE : WIDE_TITLE;
   // Geen stamhuis: rond de onthouden plek van de speler (rememberPlayCamera hierboven zette die altijd al)
   const hall = G.bs.find(b => b.type === 'townhall'),
     home = savedPlayCamera()!;
@@ -352,11 +361,11 @@ function orbitTitle(rdt: number) {
     ahead = 3;
   cam.x = hx - side * Math.cos(titleYaw) - ahead * Math.sin(titleYaw);
   cam.y = hy + side * Math.sin(titleYaw) - ahead * Math.cos(titleYaw);
-  cam.z = light ? 0.9 : 0.8;
+  cam.z = pose.z;
   cam.tx = cam.tz = null;
   cam.anchor = null;
   clampCam();
-  setTitleView({ pitch, yaw: titleYaw });
+  setTitleView({ pitch: pose.pitch, yaw: titleYaw, reach: TITLE_REACH });
 }
 // Teller met beeldjes per seconde (aan te zetten in de instellingen)
 const fpsEl = Object.assign(document.createElement('div'), { id: 'fps', hidden: !SET.fps });

@@ -53,7 +53,7 @@ export function updateCamera() {
   const near = Math.max(0.5, d * 0.55 - 25);
   // En het beeld houdt op waar de mist alles verbergt: wat daarachter ligt, hoeft niet getekend te worden.
   // Op het titelscherm kijkt de camera laag over het land: daar eerder ophouden, anders is het veel zwaarder.
-  const reach = d * (titleView ? TITLE_REACH : 3.3),
+  const reach = d * (titleView ? titleView.reach : PLAY_REACH),
     far = reach + 2;
   if (CAM3.near !== near || CAM3.far !== far) {
     CAM3.near = near;
@@ -211,13 +211,18 @@ export function updateTurn(rdt: number) {
 
 // ---- Het titelscherm: een langzaam draaiend, laag shot van je dorp ----
 
-/** Hoe de camera op het titelscherm kijkt: kanteling en draaiing. Alleen voor het beeld, niet voor het spel. */
+/**
+ * Hoe de camera op het titelscherm kijkt: kanteling, draaiing en hoe ver het beeld reikt (× de afstand,
+ * tot de mist alles bedekt). Alleen voor het beeld, niet voor het spel.
+ */
 export interface TitleView {
   pitch: number;
   yaw: number;
+  reach: number;
 }
 let titleView: TitleView | null = null;
-const TITLE_REACH = 2.6; // hoe ver (× de afstand) het titelshot reikt tot de mist alles bedekt
+export const TITLE_REACH = 2.6; // het titelshot kijkt laag over het land: eerder ophouden scheelt veel werk
+export const PLAY_REACH = 3.3; // tijdens het spel
 /**
  * Zet het titelbeeld (of null: weer het gewone beeld). Het verandert alleen hoe de camera kijkt;
  * store.yaw en de instellingen blijven zoals de speler ze had.
