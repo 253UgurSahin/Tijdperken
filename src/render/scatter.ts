@@ -260,7 +260,7 @@ export function updateScatter() {
             const grey = 0.55 + h2 * 0.35;
             _c.setRGB(grey * 1.02, grey * 0.98, grey * 0.92);
           }
-          if (locked) _c.multiplyScalar(0.55);
+          if (locked) _c.multiplyScalar(0.72);
           m.setColorAt(n[kind], _c);
           n[kind]++;
         }

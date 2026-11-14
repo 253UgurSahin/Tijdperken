@@ -154,7 +154,8 @@ const FINE = [WMAT];
 /** Fijne details aan (middel/hoog) of uit (laag). */
 export function setFineDetail(on: boolean) {
   for (const m of FINE) {
-    if (!!m.defines.FINE_DETAIL === on) continue;
+    // Let op: de define is een lege tekst (''), dus kijken óf hij er is, niet naar zijn waarde
+    if ('FINE_DETAIL' in m.defines === on) continue;
     if (on) m.defines.FINE_DETAIL = '';
     else delete m.defines.FINE_DETAIL;
     m.needsUpdate = true;

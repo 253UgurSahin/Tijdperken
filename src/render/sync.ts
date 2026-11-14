@@ -892,8 +892,9 @@ export function checkWorld() {
       if (before[c] === us[c]) continue;
       const cx = (c % CN) * CS,
         cy = Math.floor(c / CN) * CS;
-      for (let y = cy - 1; y <= cy + CS; y++)
-        for (let x = cx - 1; x <= cx + CS; x++) if (x >= 0 && y >= 0 && x < W && y < H) repaintTile(x, y);
+      // 3 tegels rand: zo ver loopt de zachte overgang naar de wildernis (zie wildFade in terrain.ts)
+      for (let y = cy - 3; y < cy + CS + 3; y++)
+        for (let x = cx - 3; x < cx + CS + 3; x++) if (x >= 0 && y >= 0 && x < W && y < H) repaintTile(x, y);
     }
     rebuildNodes(false); // bomen en rotsen in de wildernis zijn donkerder
     groundChanged();
