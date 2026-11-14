@@ -90,8 +90,9 @@ const _bird = new T3.Object3D();
 function drawBirds(show: boolean) {
   BIRDS_MESH.visible = show;
   if (!show) return;
-  // Zo groot dat een vogel op het scherm ongeveer 13 pixels breed is, maar nooit enorm als je ver uitzoomt
-  const size = Math.max(0.25, Math.min(1.4, 13 / pxu()));
+  // Zo groot dat een vogel op het scherm ongeveer 13 pixels breed is, maar nooit enorm als je ver uitzoomt.
+  // pxu() meet op de grond; vogels vliegen hoger en dus dichter bij de camera, vandaar 10 in plaats van 13.
+  const size = Math.max(0.25, Math.min(1.4, 10 / pxu()));
   const t = store.TM;
   for (let i = 0; i < BIRDS; i++) {
     const f = (i / PER) | 0,

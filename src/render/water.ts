@@ -3,9 +3,9 @@
 import * as T3 from 'three';
 import { H, W, onMapSize } from '../config';
 import { FAR_DIST, camDist } from './camera';
-import { S3, sun } from './scene';
+import { S3 } from './scene';
 import { G } from '../game/state';
-import { season } from '../game/time';
+import { darkness, season } from '../game/time';
 import { DETAIL } from './textures';
 import { TER, ter } from '../world/world';
 
@@ -174,12 +174,20 @@ const WATER_COLOR = `
   vec3 shallow = vec3(0.22, 0.54, 0.54),
     deep = vec3(0.11, 0.3, 0.42);
   vec3 waterCol = mix(shallow, deep, smoothstep(0.0, 0.5, depth));
-  float n = texture2D(uDetail, vWPos.xz * 0.31 + vec2(uTime * 0.017, uTime * 0.011)).g;
   // Schuimrand langs de oever, die zacht heen en weer schuift
   float edge = depth + sin(uTime * 1.1 + vWPos.x * 0.7 + vWPos.z * 0.5) * 0.012;
-  float foam = smoothstep(0.05, 0.012, edge) * smoothstep(0.4, 0.62, n + 0.1);
-  // Klein plasje (ook een paar tegels verderop ondiep)? Dan geen schuim, anders wordt het een witte vlek
+  // Schuim als een dun lijntje op één vaste diepte vlak bij de oever (zoals een hoogtelijn), even breed in
+  // pixels op elke zoom. Gebroken door de gladde ruis (a), en alleen waar de diepte echt verandert (helling per
+  // meter): de oude brede strook gaf op ondiepe stukken een veld van stipjes, als een tv zonder zender.
   vec2 dUv = vWPos.xz / uMapSize, o = vec2(2.5) / uMapSize;
+  float fb = texture2D(uDetail, vWPos.xz * 0.5 + vec2(uTime * 0.017, uTime * 0.011)).a;
+  float slope = fwidth(depth) / max(fwidth(vWPos.x) + fwidth(vWPos.z), 1e-4);
+  float foamLine = 1.0 - smoothstep(0.0, fwidth(edge) * 1.6 + 0.003, abs(edge - 0.055));
+  float foam = foamLine * smoothstep(0.35, 0.55, fb) * smoothstep(0.002, 0.01, slope);
+  // Buiten de kaart herhaalt de dieptekaart zijn rand, dat gaf brede witte banen op zee: daar geen schuim
+  float inMap = clamp(min(min(dUv.x, dUv.y), min(1.0 - dUv.x, 1.0 - dUv.y)) * uMapSize.x, 0.0, 1.0);
+  foam *= inMap;
+  // Klein plasje (ook een paar tegels verderop ondiep)? Dan geen schuim, anders wordt het een witte vlek
   float around = max(
     max(texture2D(uDepth, dUv + vec2(o.x, 0.0)).r, texture2D(uDepth, dUv - vec2(o.x, 0.0)).r),
     max(texture2D(uDepth, dUv + vec2(0.0, o.y)).r, texture2D(uDepth, dUv - vec2(0.0, o.y)).r)
@@ -192,19 +200,22 @@ const WATER_COLOR = `
     float roll = smoothstep(0.88, 1.0, sin(depth * 30.0 + uTime * 1.6 + br * 3.0))
       * smoothstep(0.03, 0.08, depth) * smoothstep(0.3, 0.12, depth) * smoothstep(0.4, 0.6, br)
       * clamp(1.0 - fwidth(depth * 30.0) * 1.5, 0.0, 1.0);
-    foam = max(foam, roll * 0.55);
+    foam = max(foam, roll * 0.55 * inMap);
     // Lichtspel op de bodem van ondiep water: waar twee drijvende aderpatronen elkaar kruisen, een lichte lijn
-    float ca = texture2D(uDetail, vWPos.xz * 0.23 + vec2(uTime * 0.012, uTime * 0.007)).b;
-    float cb = texture2D(uDetail, vWPos.xz * 0.19 + vec2(uTime * -0.008, uTime * 0.011)).b;
+    float ca = texture2D(uDetail, vWPos.xz * 0.55 + vec2(uTime * 0.012, uTime * 0.007)).b;
+    float cb = texture2D(uDetail, vWPos.xz * 0.47 + vec2(uTime * -0.008, uTime * 0.011)).b;
     float caust = pow(clamp(1.0 - abs(ca - cb) * 7.0, 0.0, 1.0), 6.0);
     // Van ver weg (lijntjes kleiner dan een pixel) zou het flikkeren: dan zachtjes weg
-    caust *= clamp(1.5 - fwidth(vWPos.x) * 10.0, 0.0, 1.0);
-    waterCol += vec3(0.2, 0.26, 0.22) * caust * smoothstep(0.4, 0.05, depth) * (1.0 - foam) * uSunLit;
+    caust *= clamp(1.5 - fwidth(vWPos.x) * 25.0, 0.0, 1.0);
+    waterCol += vec3(0.12, 0.16, 0.13) * caust * smoothstep(0.15, 0.03, depth) * (1.0 - foam) * uSunLit;
   #endif
   // Regen: kringen die op het water uitdijen (per vakje één druppel op een eigen moment)
   if (uRain > 0.01) {
     vec2 rp = vWPos.xz * 1.6, cell = floor(rp);
-    float h = fract(sin(dot(cell, vec2(127.1, 311.7))) * 43758.55);
+    // Toeval per vakje zonder sin van grote getallen: dat rekenen sommige telefoons slordig uit
+    vec3 hp = fract(vec3(cell.xyx) * 0.1031);
+    hp += dot(hp, hp.yzx + 33.33);
+    float h = fract((hp.x + hp.y) * hp.z);
     float t = fract(uTime * 0.8 + h);
     vec2 drop = cell + 0.3 + 0.4 * fract(vec2(h * 13.7, h * 71.3));
     float ring = smoothstep(0.06, 0.0, abs(length(rp - drop) - t * 0.42)) * (1.0 - t);
@@ -215,6 +226,12 @@ const WATER_COLOR = `
   diffuseColor.rgb = mix(waterCol, vec3(0.82, 0.88, 0.88), foam);
   diffuseColor.a = mix(0.68, 0.92, smoothstep(0.0, 0.5, depth)) * opacity / 0.86 + foam * 0.35;
 `;
+
+// Zachte overgang van 0 naar 1 tussen a en b (zoals smoothstep in een shader)
+function smoothstep01(a: number, b: number, x: number) {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
 
 let lastWaterT = 0;
 /** Laat de golfjes langzaam drijven (aangeroepen bij elk beeldje). */
@@ -230,7 +247,8 @@ export function animateWater(t: number) {
   const dt = Math.max(0, Math.min(0.2, t - lastWaterT)),
     ease = 1 - Math.exp(-dt * 0.8);
   lastWaterT = t;
-  const sunTarget = Math.max(0, Math.min(1, (sun.intensity - 0.25) / 0.55)),
+  // Dag of nacht uit de speltijd, niet uit de zonnesterkte: die verandert met maanlicht en bliksem
+  const sunTarget = (1 - smoothstep01(0.15, 0.45, darkness())) * (G.rain ? 0.5 : 1),
     rainTarget = G.rain && season().n !== 'Winter' ? 1 : 0;
   SUN_LIT.value += (sunTarget - SUN_LIT.value) * ease;
   RAIN.value += (rainTarget - RAIN.value) * ease;
