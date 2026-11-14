@@ -210,7 +210,11 @@ export function lighting(dk: number) {
     .lerp(OVERCAST, wet * 0.6)
     .lerp(SKYN, dim);
   hemi.groundColor.copy(BOUNCE_DAY).lerp(BOUNCE_NIGHT, Math.min(1, dk / 0.78));
-  hemi.intensity = (0.55 * (1 - dim * 0.7) + Math.max(0, 0.83 - sinEl) * 0.22) * (1 + 0.3 * wet);
+  // 's Ochtends wat extra licht uit de lucht: dan staat de zon laag achter de stad en zie je vooral de
+  // schaduwkant van de huizen (zo begint een nieuw spel om 7 uur niet donker)
+  const morning = G.clock < 12 ? low * (1 - Math.min(1, dk / 0.4)) : 0;
+  hemi.intensity =
+    (0.55 * (1 - dim * 0.7) + Math.max(0, 0.83 - sinEl) * 0.22) * (1 + 0.4 * wet) * (1 + 0.35 * morning);
   // Bij zonsopkomst en -ondergang kleurt de nevel aan de horizon warm; bij regen grijs
   fogNow
     .copy(moodFog)
