@@ -51,8 +51,10 @@ export function updateCamera() {
   // Ver uitgezoomd begint het beeld pas een eind voor de camera (near). Anders is de dieptebuffer daar te grof
   // en schemert het water door de oever heen (witte randen om elk meer). Dichtbij blijft het 0,5.
   const near = Math.max(0.5, d * 0.55 - 25);
-  // En het beeld houdt op waar de mist alles verbergt: wat daarachter ligt, hoeft niet getekend te worden
-  const far = d * 3.3 + 2;
+  // En het beeld houdt op waar de mist alles verbergt: wat daarachter ligt, hoeft niet getekend te worden.
+  // Op het titelscherm kijkt de camera laag over het land: daar eerder ophouden, anders is het veel zwaarder.
+  const reach = d * (titleView ? TITLE_REACH : 3.3),
+    far = reach + 2;
   if (CAM3.near !== near || CAM3.far !== far) {
     CAM3.near = near;
     CAM3.far = far;
@@ -77,7 +79,7 @@ export function updateCamera() {
   // dorp zelf al wazig zodra je inzoomt.
   const fog = S3.fog as T3.Fog;
   fog.near = d * (0.95 + (0.9 - p) * 1.2);
-  fog.far = d * 3.3;
+  fog.far = reach;
 }
 /**
  * De schaduwkaart schuift mee met de camera. Schuift hij een halve pixel (van de kaart) op, dan verspringen
@@ -215,6 +217,7 @@ export interface TitleView {
   yaw: number;
 }
 let titleView: TitleView | null = null;
+const TITLE_REACH = 2.6; // hoe ver (× de afstand) het titelshot reikt tot de mist alles bedekt
 /**
  * Zet het titelbeeld (of null: weer het gewone beeld). Het verandert alleen hoe de camera kijkt;
  * store.yaw en de instellingen blijven zoals de speler ze had.

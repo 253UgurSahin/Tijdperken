@@ -161,14 +161,25 @@ const _m = new T3.Matrix4(),
   _up = new T3.Vector3(0, 1, 0),
   _c = new T3.Color();
 
+// De vier hoeken van het beeld (als deel van breedte en hoogte), vast zodat er elk beeldje niets nieuws nodig is
+const CORNERS: [number, number][] = [
+  [0, 0],
+  [1, 0],
+  [1, 1],
+  [0, 1],
+];
 /** Elk beeldje: als de camera een eind verschoven of gezoomd is, het strooisel opnieuw neerzetten. */
 export function updateScatter() {
   if (!density) return;
+  // Tot de verste hoek van het beeld op de grond: een gekantelde camera kijkt ver vooruit, ook op een breed
+  // scherm. Ver uitgezoomd: minder dicht (zie thin); nog verder: helemaal niets.
+  let R = 0;
+  for (const [sx, sy] of CORNERS) {
+    const [x, y] = s2t(sx * VW, sy * VH);
+    R = Math.max(R, Math.hypot(x - cam.x, y - cam.y));
+  }
+  R = Math.min(28, R);
   const d = camDist(),
-    // Tot de verste hoek van het beeld op de grond: een gekantelde camera kijkt ver vooruit, ook op een breed
-    // scherm. Ver uitgezoomd: minder dicht (zie thin); nog verder: helemaal niets.
-    corners = [s2t(0, 0), s2t(VW, 0), s2t(VW, VH), s2t(0, VH)],
-    R = Math.min(28, Math.max(...corners.map(([x, y]) => Math.hypot(x - cam.x, y - cam.y)))),
     visible = d < 40;
   for (const m of Object.values(KINDS)) m.visible = visible && (m !== KINDS.flower || flowersOn);
   if (!visible) return;

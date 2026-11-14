@@ -497,7 +497,11 @@ export function showTitle({ setup = false, challenges = false, focus = null }: T
     const view = currentTitleView();
     forgetPlayCamera();
     if (glideTo && view) startGlide(view, glideTo);
-    else setTitleView(null);
+    else {
+      // (nog geen titelbeeld, bijv. Enter in het allereerste beeldje: dan meteen naar het doel)
+      if (glideTo) Object.assign(cam, glideTo);
+      setTitleView(null);
+    }
   };
   // Het hoofdmenu: groot logo en één lijst met keuzes, zoals in een echte game. "Nieuw spel" opent een tweede
   // lijst met de vier manieren om te beginnen. Pijltjes omhoog/omlaag en Enter werken ook.

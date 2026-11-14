@@ -336,13 +336,15 @@ function orbitTitle(rdt: number) {
     titleYaw = store.yaw;
   }
   if (SET.motion) titleYaw += rdt * 0.03;
-  // Op "laag" en op een telefoon of tablet: steiler en dichterbij, dan is er minder wereld te tekenen
-  const light = store.quality === 'low' || COARSE;
+  // Alleen op "hoog" het wijde lage shot. Op "middel", "laag" en op een telefoon of tablet: steiler en
+  // dichterbij, dan is er veel minder wereld te tekenen (het wijde shot heeft drie keer zoveel driehoeken).
+  const light = store.quality !== 'high' || COARSE;
   const pitch = light ? 0.7 : 0.5;
+  // Geen stamhuis: rond de onthouden plek van de speler (rememberPlayCamera hierboven zette die altijd al)
   const hall = G.bs.find(b => b.type === 'townhall'),
-    home = savedPlayCamera();
-  const hx = hall ? hall.x + 1 : home ? home.x : cam.x,
-    hy = hall ? hall.y + 1 : home ? home.y : cam.y;
+    home = savedPlayCamera()!;
+  const hx = hall ? hall.x + 1 : home.x,
+    hy = hall ? hall.y + 1 : home.y;
   // Het stamhuis rechts van het menu: het midden van het beeld 7 tegels naar links (langs 'rechts' op het
   // scherm). Op een telefoon of een staand scherm staat het menu eroverheen, dan het stamhuis in het midden.
   // En een paar tegels vooruit kijken: dan staat het dorp wat lager in beeld, met het land erachter.

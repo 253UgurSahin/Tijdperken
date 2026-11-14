@@ -131,8 +131,12 @@ export function stepCinematic(now: number): void {
   if (done) shot = null;
 }
 
-/** Stop het moment meteen, met de camera weer waar de speler was (het titelscherm gaat open). */
+/**
+ * Stop het moment meteen, met de camera weer waar de speler was (het titelscherm gaat open).
+ * Ook een lopende vlucht naar het spel springt dan meteen naar zijn doel.
+ */
 export function stopCinematic(): void {
+  if (glide) finish(glide.to);
   if (!shot) return;
   cam.x = shot.from.x;
   cam.y = shot.from.y;
@@ -150,13 +154,17 @@ interface ViewPose extends Pose {
   yaw: number;
   pitch: number;
 }
-/** De lopende glijvlucht: van waar, naar waar, hoe lang, en wat we het vorige beeldje zelf zetten. */
+/**
+ * De lopende glijvlucht: van waar, naar waar, hoe lang, en wat we het vorige beeldje zelf zetten.
+ * `viewOnly`: de speler nam het over; dan draaien en kantelen we alleen nog bij, de plek is van hem.
+ */
 interface Glide {
   start: number;
   dur: number;
   from: ViewPose;
   to: ViewPose;
   set: { x: number; y: number; z: number } | null;
+  viewOnly: boolean;
 }
 let glide: Glide | null = null;
 const HURRY = 0.4; // seconden: de rest van de vlucht na een klik of toets
@@ -181,6 +189,7 @@ export function startGlide(from: { pitch: number; yaw: number }, to: PlayCamera,
     from: { x: cam.x, y: cam.y, d: 1 / cam.z, yaw: end.yaw - turn, pitch: from.pitch },
     to: end,
     set: null,
+    viewOnly: false,
   };
   cam.tx = cam.ty = cam.tz = null;
   setTitleView({ pitch: from.pitch, yaw: end.yaw - turn });
@@ -197,7 +206,7 @@ function finish(end: Pose): void {
 }
 // Een klik of toets tijdens de vlucht: de rest gaat snel
 function hurryGlide(): void {
-  if (!glide || !glide.set) return;
+  if (!glide || !glide.set || glide.viewOnly) return;
   const now = performance.now() / 1000,
     k = smooth(Math.min(1, (now - glide.start) / glide.dur));
   glide.from = mixView(glide.from, glide.to, k);
@@ -211,13 +220,26 @@ const mixView = (a: ViewPose, b: ViewPose, k: number): ViewPose => ({
 });
 function stepGlide(now: number): void {
   if (!glide) return;
-  // Zoomt of schuift de speler zelf, dan is de camera meteen weer van hem (met het gewone beeld)
-  if (playerTookOver(glide)) {
-    glide = null;
-    setTitleView(null);
-    return;
+  // Zoomt of schuift de speler zelf, dan is de plek meteen van hem. Draaiing en kanteling springen niet
+  // (de titeldraaiing kan een halve slag verschillen): die draaien we nog snel bij.
+  if (!glide.viewOnly && playerTookOver(glide)) {
+    const k = smooth(Math.min(1, (now - glide.start) / glide.dur));
+    glide.from = mixView(glide.from, glide.to, k);
+    glide.start = now;
+    glide.dur = Math.min(HURRY, glide.dur);
+    glide.viewOnly = true;
   }
   const k = Math.min(1, (now - glide.start) / glide.dur);
+  if (glide.viewOnly) {
+    // Het doel van de kanteling hoort bij de zoom die de speler nu heeft
+    const to = { ...glide.to, pitch: pitchAt(cam.z) },
+      pose = mixView(glide.from, to, smooth(k));
+    if (k >= 1) {
+      glide = null;
+      setTitleView(null);
+    } else setTitleView({ pitch: pose.pitch, yaw: pose.yaw });
+    return;
+  }
   if (k >= 1) {
     finish(glide.to);
     return;
