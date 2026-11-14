@@ -9,7 +9,10 @@ import { G, sel } from '../game/state';
 import { RINGG, quadG, ringAt } from './decals';
 import {
   bx,
+  cy,
   disposeMerged,
+  fireFlicker,
+  gCyl,
   gOct,
   gTorus,
   isMesh,
@@ -19,6 +22,7 @@ import {
   mergeWhole,
   mk,
   paint,
+  type StackStyle,
 } from './kit';
 import { BOSS_SCALE } from '../data/bosses';
 import { aimTurrets, findTurrets, type TurretState } from './turrets';
@@ -35,6 +39,9 @@ import { dirtyGround, node, road } from '../world/world';
 import { groundChanged, shadeAll, shadeChanged } from './terrainlook';
 import { miniChanged } from './minimap';
 import { landSig, rivalColour } from '../game/rivals';
+import { darkness } from '../game/time';
+import { CONV_ACT } from '../game/buildings';
+import { hash2 } from '../util/random';
 
 /** Wat er per gebouw in de 3D-wereld bewaard wordt: houder (g), model (m), hoogte en bewegende delen. */
 interface BuildingRec {
@@ -46,14 +53,15 @@ interface BuildingRec {
   key: string;
   h: number;
   fires: T3.Object3D[];
+  /** De vlammen van het fijne model met hun plek, voor vonken, rook en gloed (zie fireFx). */
+  fireSpots: FireSpot[];
   flags: T3.Object3D[];
   pumps: T3.Object3D[];
-  lamps: T3.Object3D[];
   spins: T3.Object3D[];
   /** Het draaibare geschut van een toren (zie render/turrets.ts), of null. */
   turret: TurretState | null;
-  /** Plekken in de wereld waar rook uit een schoorsteen komt: [x, y, z]. */
-  chims: [number, number, number][];
+  /** Plekken in de wereld waar rook uit een schoorsteen komt: [x, y, z, soort rook]. */
+  chims: [number, number, number, ChimStyle][];
   /** Was het gebouw af toen dit model gemaakt werd? */
   done: boolean;
   /** De tegels onder het gebouw: linkerbovenhoek (x, y) en grootte (s). */
@@ -62,8 +70,9 @@ interface BuildingRec {
   s: number;
   /** Vorige waarde van b.flash, om een nieuwe treffer te zien. */
   flPrev: number;
-  /** Tijd tot het volgende rookpluimpje, en de bouwvoortgang bij het vorige beeldje. */
+  /** Tijd tot het volgende rookpluimpje (huis en fabriek), en de bouwvoortgang bij het vorige beeldje. */
   smokeT?: number;
+  stackT?: number;
   prevProg?: number;
   /** Opveren (zie popBounce): de laatst geziene b.pop_t, wanneer het begon en of het nu bezig is. */
   popSeen: number | undefined;
@@ -143,6 +152,22 @@ export interface EntityRec {
 interface CampRec {
   g: T3.Group;
   fires: T3.Object3D[];
+  fireSpots: FireSpot[];
+}
+/** Een huisschoorsteen ('house', altijd een dun pluimpje) of een fabrieksschoorsteen (alleen als hij werkt). */
+type ChimStyle = 'house' | StackStyle;
+/** Een vlam met zijn vaste plek in de wereld en de klokjes voor vonken, rook en gloed (zie fireFx). */
+export interface FireSpot {
+  o: T3.Object3D;
+  x: number;
+  y: number;
+  z: number;
+  /** Grootte van de vlam, en of het een open vuur is (anders een lantaarn: die flakkert alleen). */
+  s: number;
+  open: boolean;
+  ember: number;
+  wisp: number;
+  halo: number;
 }
 
 export const BG3 = new T3.Group(),
@@ -155,11 +180,31 @@ export const bRec = new Map<number, BuildingRec>(),
 let lastG: GameState | null = null,
   terrSnap: Uint8Array | null = null,
   unlSig = '';
-// Steigers rond een bouwplaats: palen, liggers op een paar hoogtes en een schoor
-export function scaffold(g: T3.Object3D, s: number, h: number) {
-  const m = mat('#8a6a40'),
-    plank = mat('#9a7c52'),
-    e = s * 0.5;
+// Kleuren van de steigers en het bouwmateriaal
+const SCAFFOLD_WOOD = '#8a6a40',
+  SCAFFOLD_STEEL = '#6f777e',
+  SCAFFOLD_WHITE = '#e3e6e8',
+  PLANK = '#9a7c52',
+  TARP = '#e0742c',
+  SITE_FLOOR = '#a58a62';
+/**
+ * Steigers rond een bouwplaats in de stijl van het tijdperk: hout tot de industrie, daarna staal met oranje
+ * doek, in de toekomst wit. Met de vloer en een stapel bouwmateriaal op een voorhoek (welke hoek hangt af van
+ * `seed`). Alles samen wordt één vorm: een bouwplaats kost zo één tekenopdracht in plaats van zo'n twintig.
+ */
+export function scaffold(g: T3.Object3D, s: number, h: number, age: number, seed: number): T3.Object3D {
+  const parts = new T3.Group(),
+    pole = mat(age >= 7 ? SCAFFOLD_WHITE : age >= 5 ? SCAFFOLD_STEEL : SCAFFOLD_WOOD),
+    plank = mat(PLANK),
+    t = age >= 5 ? 0.04 : 0.045, // stalen buizen zijn net wat dunner dan houten palen
+    e = s * 0.5,
+    // Op welke voorhoek het bouwmateriaal ligt (links of rechts, vast per gebouw)
+    side = hash2(seed, 5, 11) < 0.5 ? -1 : 1,
+    // Hoe groot die stapel is en hoeveel loopplank erboven wegblijft
+    pileSize = s <= 1 ? 1.4 : Math.min(1.6, 1.2 + s * 0.15),
+    [reachX, reachZ] = pileReach(age, pileSize),
+    rim = 0.03,
+    pileGap = 2 * (reachX + rim);
   for (const [x, z] of [
     [-1, -1],
     [1, -1],
@@ -168,42 +213,257 @@ export function scaffold(g: T3.Object3D, s: number, h: number) {
     [0, 1],
     [1, 0],
   ])
-    bx(g, 0.045, h, 0.045, m, x * e, 0, z * e);
+    bx(parts, t, h, t, pole, x * e, 0, z * e);
   for (let y = 0.3; y < h; y += 0.38) {
-    bx(g, s, 0.035, 0.035, m, 0, y, e);
-    bx(g, 0.035, 0.035, s, m, e, y, 0);
-    // Loopplank op de voorkant
-    bx(g, s * 0.98, 0.02, 0.12, plank, 0, y + 0.03, e + 0.07);
+    bx(parts, s, 0.035, 0.035, pole, 0, y, e);
+    bx(parts, 0.035, 0.035, s, pole, e, y, 0);
+    // Loopplank op de voorkant; boven de hoek met bouwmateriaal blijft hij weg, zodat je de stapel ziet
+    bx(parts, s * 0.98 - pileGap, 0.02, 0.12, plank, (-side * pileGap) / 2, y + 0.03, e + 0.07);
   }
-  const brace = bx(g, 0.03, Math.hypot(e, h) * 0.95, 0.03, m, -e * 0.5, 0, e);
+  const brace = bx(parts, 0.03, Math.hypot(e, h) * 0.95, 0.03, pole, -e * 0.5, 0, e);
   brace.rotation.z = -Math.atan2(e, h);
+  // Vanaf de industrie: twee banen oranje doek langs de voor- en de zijkant
+  if (age >= 5) {
+    const y = Math.max(0.12, Math.min(h - 0.25, 0.42));
+    bx(parts, s * 0.96, 0.13, 0.012, TARP, 0, y, e + 0.03);
+    bx(parts, 0.012, 0.13, s * 0.96, TARP, e + 0.03, y, 0);
+  }
+  // De vloer van de bouwplaats (aangestampt zand)
+  mk(quadG, mat(SITE_FLOOR), parts, 0, 0.02, 0, s * 0.98, 1, s * 0.98);
+  // Een stapel bouwmateriaal op de linker- of rechtervoorhoek, binnen de bouwplaats: de buitenkant ligt net
+  // binnen de rand, zodat hij niet in het gebouw of de opslag van de buren steekt
+  materialPile(parts, age, side * (e - rim - reachX), e - rim - reachZ, side, pileSize);
+  // (mergeWhole geeft alleen null bij minder dan twee delen; hier zijn het er altijd tientallen)
+  const site: T3.Object3D = mergeWhole(parts) || parts;
+  g.add(site);
+  return site;
+}
+/** Hoe ver de stapel bouwmateriaal vanaf zijn midden reikt, opzij (x) en naar voren en achteren (z). */
+function pileReach(age: number, k: number): [number, number] {
+  if (age <= 1) return [0.15 * k, 0.07 * k];
+  if (age <= 4) return [0.13 * k + 0.01, 0.04 + 0.05 * k];
+  return [0.15 * k, 0.1 * k];
+}
+/**
+ * Bouwmateriaal dat bij het tijdperk past: boomstammen in de oertijd en de bronstijd, steenblokken en planken
+ * tot de Gouden Eeuw, stalen balken daarna. Het ligt op (x, z); `side` zegt aan welke kant van de bouwplaats.
+ */
+function materialPile(g: T3.Object3D, age: number, x: number, z: number, side: number, k: number) {
+  if (age <= 1) {
+    // Drie stammen (twee onder, één erbovenop), met lichte zaagvlakken aan één kant
+    const r = 0.035 * k,
+      len = 0.3 * k;
+    for (const [dz, y] of [
+      [-r, r],
+      [r, r],
+      [0, r * 2.7],
+    ]) {
+      // (Een cilinder staat op zijn voet: gekanteld ligt hij links van zijn plek, dus halve lengte opschuiven)
+      mk(gCyl(r, r, 6), mat('#7a5634'), g, x + len / 2, y, z + dz, 1, len, 1).rotation.z = Math.PI / 2;
+      // (Het zaagvlak zit aan de buitenkant, waar je het ziet)
+      mk(
+        gCyl(r * 0.8, r * 0.8, 6),
+        mat('#c9a774'),
+        g,
+        x + (side * len) / 2 + (side > 0 ? 0.01 : 0),
+        y,
+        z + dz,
+        1,
+        0.01,
+        1,
+      ).rotation.z = Math.PI / 2;
+    }
+  } else if (age <= 4) {
+    // Steenblokken en een stapeltje planken; in de Gouden Eeuw baksteen
+    const stone = age >= 4 ? '#a3553f' : '#aaa69b';
+    bx(g, 0.12 * k, 0.08 * k, 0.1 * k, stone, x - side * 0.05, 0, z - 0.04);
+    bx(g, 0.1 * k, 0.08 * k, 0.1 * k, stone, x + side * 0.07, 0, z - 0.03);
+    bx(g, 0.1 * k, 0.07 * k, 0.09 * k, stone, x + side * 0.01, 0.08 * k, z - 0.035);
+    for (let i = 0; i < 3; i++) bx(g, 0.26 * k, 0.018, 0.05, '#b08c5a', x, i * 0.02, z + 0.07, side * 0.12);
+  } else {
+    // Stalen balken, kruiselings gestapeld op twee houten klossen, en een rol kabel
+    const beam = age >= 7 ? '#9aa3ab' : '#4f575e';
+    for (const dx of [-0.08, 0.08]) bx(g, 0.04, 0.03, 0.2 * k, '#6b5236', x + dx * k, 0, z);
+    for (let i = 0; i < 3; i++) bx(g, 0.3 * k, 0.035, 0.035, beam, x, 0.03 + i * 0.037, z - 0.06 + i * 0.05);
+    cy(g, 0.03, 0.12, beam, x - side * 0.11, 0, z + 0.02, 6);
+  }
 }
 let lastBT = 0;
 const tmpV = new T3.Vector3();
-// Rook uit schoorstenen: dunne pluimpjes bij huizen, dikkere grijze rook bij werkplaatsen die draaien
+/**
+ * Hoe fabrieksrook eruitziet: snelheid omhoog, levensduur (s), grootte van begin tot eind, kleur,
+ * doorzichtigheid en hoe ver de pluimpjes opzij uit elkaar liggen.
+ */
+const STACK_SMOKE: Record<
+  StackStyle,
+  { up: number; life: number; s0: number; s1: number; col: number; a: number; spread: number }
+> = {
+  // Kolen: donker en dik, een zware kolom die langzaam opstijgt
+  coal: { up: 0.55, life: 4.2, s0: 0.14, s1: 0.65, col: 0x4c4843, a: 0.55, spread: 0.05 },
+  // Stoom: wit en snel, en meteen weer weg
+  steam: { up: 1.0, life: 1.5, s0: 0.1, s1: 0.55, col: 0xf2f2ee, a: 0.5, spread: 0.06 },
+  // Stof: laag en beige, waait opzij
+  dust: { up: 0.14, life: 1.8, s0: 0.1, s1: 0.5, col: 0xc9b48a, a: 0.4, spread: 0.4 },
+};
+/**
+ * Of een werkplaats nu aan het werk is. Een fabriek zet b.act maar één keer per ronde; met een ruime marge
+ * (twee rondes) blijft de rookkolom daardoor heel tijdens het werk, en stopt hij als de fabriek stilvalt.
+ */
+function isWorking(b: Building, d: BuildingDef) {
+  // (b.run wordt alleen in de speltik bijgewerkt: ook als het spel stilstaat moet uitzetten de rook stoppen)
+  if (d.gen) return b.on !== false && b.run;
+  if (!d.conv) return false;
+  return b.on !== false && !b.plenty && !b.starved && !b.saving && b.act > CONV_ACT - d.conv.t * 2;
+}
+// Rook uit schoorstenen: een huis geeft altijd een dun pluimpje, een werkplaats (zoals de kruitmolen) alleen
+// zolang hij werkt; fabrieken roken uit hun echte schoorstenen, ook alleen zolang ze werken
 function chimneySmoke(r: BuildingRec, b: Building, d: BuildingDef, dt: number) {
   if (!r.chims.length || !b.done) return;
-  const busy = (d.conv || d.gen) && b.act > 0;
-  const rate = busy ? 2.6 : 1.6;
-  r.smokeT = (r.smokeT || Math.random()) - dt * rate;
-  if (r.smokeT > 0) return;
-  r.smokeT += 1;
   if (Math.abs(r.g.position.x - cam.x) + Math.abs(r.g.position.z - cam.y) > camDist() * 1.6) return;
-  for (const c of r.chims)
-    emit(
-      LAYER.soft,
-      c[0],
-      c[1],
-      c[2],
-      0.12 + Math.random() * 0.06,
-      busy ? 0.5 : 0.32,
-      -0.06,
-      busy ? 3.4 : 3.2,
-      0.05,
-      busy ? 0.45 : 0.32,
-      busy ? 0x8f8b84 : 0xdedad2,
-      busy ? 0.55 : 0.5,
-    );
+  const workplace = !!(d.conv || d.gen),
+    working = workplace && isWorking(b, d);
+  r.smokeT = (r.smokeT || Math.random()) - dt * (working ? 2.6 : 1.6);
+  // (Een stilstaande werkplaats rookt niet uit zijn huisschoorsteen; het klokje loopt wel door)
+  const house = r.smokeT <= 0 && (working || !workplace);
+  if (r.smokeT <= 0) r.smokeT += 1;
+  r.stackT = (r.stackT || Math.random()) - dt * 4;
+  const factory = working && r.stackT <= 0;
+  if (r.stackT <= 0) r.stackT += 1;
+  for (const c of r.chims) {
+    const style = c[3];
+    if (style === 'house') {
+      if (house)
+        emit(
+          LAYER.soft,
+          c[0],
+          c[1],
+          c[2],
+          0.12 + Math.random() * 0.06,
+          0.32,
+          -0.06,
+          3.2,
+          0.05,
+          0.32,
+          // Een werkplaats die stookt geeft grijzere rook dan een huis
+          workplace ? 0xa8a29a : 0xdedad2,
+          0.5,
+        );
+    } else if (factory) {
+      const k = STACK_SMOKE[style];
+      emit(
+        LAYER.soft,
+        c[0] + (Math.random() - 0.5) * k.spread,
+        c[1],
+        c[2] + (Math.random() - 0.5) * k.spread,
+        0.1 + (Math.random() - 0.5) * k.spread,
+        k.up * (0.85 + Math.random() * 0.3),
+        -0.05 + (Math.random() - 0.5) * k.spread,
+        k.life,
+        k.s0,
+        k.s1,
+        k.col,
+        k.a,
+      );
+    }
+  }
+}
+/** De vlammen in een model met hun plek in de wereld (de matrices moeten al bijgewerkt zijn). */
+export function fireSpots(root: T3.Object3D): FireSpot[] {
+  const spots: FireSpot[] = [];
+  root.traverse(o => {
+    if (!o.userData.fire) return;
+    o.getWorldPosition(tmpV);
+    spots.push({
+      o,
+      x: tmpV.x,
+      y: tmpV.y,
+      z: tmpV.z,
+      s: o.userData.size ?? 1,
+      open: o.userData.fire !== 'lamp',
+      ember: Math.random() * 0.15,
+      wisp: Math.random() * 0.6,
+      halo: 0,
+    });
+  });
+  return spots;
+}
+// Per beeldje: hoeveel deeltjes alle vuren samen nog mogen loslaten, hoe donker het is en hoe ver je kijkt
+const FIRE_CAP = 40;
+// Hoe fel de gloed rond een vuur 's nachts is. Stel bij als de gloedlaag verandert (zachtere vlekjes met een
+// randversterking hebben minder nodig, zo'n 0,12 tot 0,15).
+const HALO_ALPHA = 0.16;
+const fireView = { budget: FIRE_CAP, dark: 0, near: true, range: 10 };
+function startFireFrame() {
+  fireView.budget = FIRE_CAP;
+  fireView.dark = darkness();
+  fireView.near = !isFar();
+  fireView.range = camDist() * 1.2;
+  fireFlicker(store.TM);
+}
+/**
+ * Een levend vuur: de vlam wiegt en draait, een open vuur geeft opstijgende vonken en een dun sliertje rook,
+ * en 's avonds krijgt elk vuur een zachte gloed. Alleen dichtbij, en met een plafond per beeldje (FIRE_CAP),
+ * zodat een stad vol lantaarns geen deeltjesstorm wordt.
+ */
+export function fireFx(f: FireSpot, id: number) {
+  if (!fireView.near || Math.abs(f.x - cam.x) + Math.abs(f.z - cam.y) > fireView.range) return;
+  const dt = frameDt,
+    s = f.s;
+  if (f.open) {
+    f.o.rotation.z = Math.sin(store.TM * 6.3 + id) * 0.07;
+    f.o.rotation.y = store.TM * 1.3 + id;
+    // (Klokjes niet verder dan één keer terug laten lopen als het plafond even op is: dan geen inhaalgolf)
+    f.ember = Math.max(-0.15, f.ember - dt);
+    if (f.ember <= 0 && fireView.budget > 0) {
+      f.ember += 0.15;
+      fireView.budget--;
+      emit(
+        LAYER.glow,
+        f.x + (Math.random() - 0.5) * 0.12 * s,
+        f.y + 0.1 * s,
+        f.z + (Math.random() - 0.5) * 0.12 * s,
+        (Math.random() - 0.5) * 0.5,
+        0.45 + Math.random() * 0.35,
+        (Math.random() - 0.5) * 0.5,
+        0.9 + Math.random() * 0.6,
+        0.035 * s,
+        0.01,
+        0xffa040,
+        1,
+        0.25,
+      );
+    }
+    f.wisp = Math.max(-0.6, f.wisp - dt);
+    if (f.wisp <= 0 && fireView.budget > 0) {
+      f.wisp += 0.6;
+      fireView.budget--;
+      emit(LAYER.soft, f.x, f.y + 0.3 * s, f.z, 0.06, 0.3, -0.03, 2.4, 0.06 * s, 0.32 * s, 0x6a625a, 0.3);
+    }
+  }
+  // Gloed in het donker: korte, elkaar overlappende vlekjes rond de vlam. Elk vlekje is iets anders van maat
+  // en plek, zodat de randen door elkaar lopen en de gloed geen scherpe vorm krijgt.
+  if (fireView.dark > 0.2) {
+    f.halo = Math.max(-0.2, f.halo - dt);
+    if (f.halo <= 0 && fireView.budget > 0) {
+      f.halo += 0.2;
+      fireView.budget--;
+      const haloSize = (0.27 + Math.random() * 0.14) * s;
+      emit(
+        LAYER.glow,
+        f.x + (Math.random() - 0.5) * 0.08 * s,
+        f.y + 0.12 * s,
+        f.z + (Math.random() - 0.5) * 0.08 * s,
+        0,
+        0,
+        0,
+        0.45,
+        haloSize,
+        haloSize,
+        0xff7a30, // warm oranje: geler wordt op gras al snel groenig
+        HALO_ALPHA * fireView.dark,
+      );
+    }
+  }
 }
 // Bouwplaats: stofwolkjes zolang er gewerkt wordt; bij oplevering een stofring en wat glinstering
 function buildDust(r: BuildingRec, b: Building, s: number, dt: number) {
@@ -304,6 +564,7 @@ export function syncBuildings() {
   seen.clear();
   lastBT = store.TM;
   frameDt = dt || 1 / 60;
+  startFireFrame();
   lodBuildings();
   for (const b of G.bs) {
     const d = B[b.type],
@@ -337,14 +598,8 @@ export function syncBuildings() {
       g.position.set(b.x + s / 2, 0, b.y + s / 2);
       const box = new T3.Box3().setFromObject(m);
       const h = Math.max(0.3, box.max.y);
-      if (!b.done) {
-        scaffold(g, s, Math.max(0.6, h * 0.85));
-        const f = new T3.Mesh(quadG, mat('#a58a62'));
-        f.scale.set(s * 0.98, 1, s * 0.98);
-        f.position.y = 0.02;
-        f.receiveShadow = true;
-        g.add(f);
-      }
+      // In aanbouw: steigers, vloer en bouwmateriaal (buiten de wissel tussen fijn en grof om)
+      if (!b.done) scaffold(g, s, Math.max(0.6, h * 0.85), G.age, b.id);
       g.traverse(o => {
         o.userData.bid = b.id;
       });
@@ -352,22 +607,23 @@ export function syncBuildings() {
       const fires: T3.Object3D[] = [],
         flags: T3.Object3D[] = [],
         pumps: T3.Object3D[] = [],
-        lamps: T3.Object3D[] = [],
         spins: T3.Object3D[] = [],
-        chims: [number, number, number][] = [];
+        chims: [number, number, number, ChimStyle][] = [];
       g.updateMatrixWorld(true);
       // Schoorstenen alleen uit het fijne model, anders rookt elke schoorsteen dubbel
       m.traverse(o => {
         if (o.userData.chim) {
           o.getWorldPosition(tmpV);
-          chims.push([tmpV.x, tmpV.y, tmpV.z]);
+          // (userData is ongetypeerd: alleen de drie bekende fabrieksrooksoorten tellen, de rest is een huis)
+          const c: unknown = o.userData.chim;
+          const style: ChimStyle = c === 'coal' || c === 'steam' || c === 'dust' ? c : 'house';
+          chims.push([tmpV.x, tmpV.y, tmpV.z, style]);
         }
       });
       g.traverse(o => {
         if (o.userData.fire) fires.push(o);
         if (o.userData.flag) flags.push(o);
         if (o.userData.pump) pumps.push(o);
-        if (o.userData.lamp) lamps.push(o);
         if (o.userData.spin) spins.push(o);
       });
       r = {
@@ -377,9 +633,9 @@ export function syncBuildings() {
         key,
         h,
         fires,
+        fireSpots: fireSpots(m),
         flags,
         pumps,
-        lamps,
         spins,
         turret: findTurrets(g, b.id),
         chims,
@@ -416,6 +672,7 @@ export function syncBuildings() {
       const k = 0.85 + Math.sin(store.TM * 13 + b.id) * 0.1 + Math.sin(store.TM * 7.3 + b.id * 2) * 0.08;
       f.scale.set(1, k * (b.on === false ? 0.2 : 1), 1);
     }
+    if (b.done && b.on !== false) for (const f of r.fireSpots) fireFx(f, b.id);
     for (const f of r.flags) f.rotation.y = Math.sin(store.TM * 2 + b.id) * 0.25;
     for (const p of r.pumps) if (b.on && b.done) p.rotation.z = Math.sin(store.TM * 2.2 + b.id) * 0.25;
     // Draaiende delen (molenwieken, waterrad, ringen) draaien alleen als het gebouw af is en aan staat
@@ -821,6 +1078,7 @@ export function syncCamps() {
       makeCamp(g, c.tier);
       mergeStatic(g);
       g.position.set(c.x + 1, 0, c.y + 1);
+      g.updateMatrixWorld(true);
       g.traverse(o => {
         o.userData.camp = c.id;
       });
@@ -829,10 +1087,11 @@ export function syncCamps() {
       g.traverse(o => {
         if (o.userData.fire) fires.push(o);
       });
-      r = { g, fires };
+      r = { g, fires, fireSpots: fireSpots(g) };
       cRec.set(c.id, r);
     }
     for (const f of r.fires) f.scale.y = 0.85 + Math.sin(store.TM * 12 + c.id) * 0.15;
+    for (const f of r.fireSpots) fireFx(f, c.id);
   }
   for (const [id, r] of cRec)
     if (!seen.has(id)) {

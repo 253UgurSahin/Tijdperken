@@ -36,6 +36,7 @@ import {
   detail,
   setDetail,
   sp,
+  stack,
   wins,
 } from './kit';
 import { bmap } from '../world/world';
@@ -542,6 +543,7 @@ const MODELS: Record<string, ModelFn> = {
     cy(g, 0.32, 0.7, C.stoned, 0.5, 0, 0.45, 10, 0.22);
     bx(g, 0.2, 0.16, 0.04, GLOWM, 0.5, 0.08, 0.77);
     cy(g, 0.09, 1.5, C.stoned, 0.5, 0.6, 0.45, 8);
+    stack(g, 0.5, 2.1, 0.45, 'coal');
     for (let k = 0; k < 3; k++) bx(g, 0.18, 0.05, 0.08, C.bronze, -0.4 + k * 0.2, 0, 0.55);
     bx(g, 1.34, 0.04, 0.05, '#4a5260', -0.25, 1.0, -0.3);
     sp(g, 0.14, '#b87333', -0.5, 0.03, 0.8, 0, 0.6); // koper
@@ -624,7 +626,7 @@ const MODELS: Record<string, ModelFn> = {
   lantern(g) {
     cy(g, 0.04, 1.05, C.woodd, 0, 0, 0, 6);
     bx(g, 0.16, 0.18, 0.16, '#3a2f25', 0, 1.02, 0);
-    flame(g, 0, 1.05, 0, 0.7);
+    flame(g, 0, 1.05, 0, 0.7, false);
   },
   castletower(g) {
     bx(g, 0.82, 1.55, 0.82, C.stone);
@@ -647,6 +649,9 @@ const MODELS: Record<string, ModelFn> = {
     bx(g, 0.08, 0.08, 0.9, C.metal, 0.1, 1.2, 0.05, 0.7);
     cy(g, 0.1, 1.3, C.dmetal, 0.6, 0, -0.55, 8);
     cy(g, 0.13, 0.04, '#2e3236', 0.6, 1.3, -0.55, 8);
+    // Rook uit de hoogoven zelf en uit de dunne schoorsteen ernaast
+    stack(g, -0.25, 1.85, -0.25, 'coal');
+    stack(g, 0.6, 1.34, -0.55, 'coal');
     sp(g, 0.2, '#6e4a3a', -0.75, 0.04, 0.7, 0, 0.5); // ijzererts
     sp(g, 0.16, '#2e2e30', -0.4, 0.04, 0.8, 0, 0.5); // kolen
     bx(g, 0.3, 0.12, 0.2, C.dmetal, 0.75, 0, 0.85);
@@ -662,6 +667,7 @@ const MODELS: Record<string, ModelFn> = {
     ]) {
       cy(g, 0.13, 2.1, C.brick, x, 0, z, 10, 0.11);
       bx(g, 0.24, 0.06, 0.24, '#f1ece0', x, 1.7, z);
+      stack(g, x, 2.1, z, 'coal');
     }
     cy(g, 0.3, 0.4, C.metal, -0.6, 0, -0.6, 10);
     bx(g, 1.42, 0.05, 1.12, '#d8cfbe', -0.2, 0.85, 0.2);
@@ -739,6 +745,8 @@ const MODELS: Record<string, ModelFn> = {
     }
     cy(g, 0.1, 1.9, C.metal, 0.5, 0, 0.1, 8);
     cy(g, 0.08, 1.5, C.metal, 0.75, 0, 0.45, 8);
+    // De fakkel op de hoge pijp is een open vuur; uit de lagere pijp komt stoom
+    stack(g, 0.75, 1.5, 0.45, 'steam');
     for (const y of [0.6, 1.1, 1.5]) bx(g, 0.22, 0.04, 0.22, C.dmetal, 0.5, y, 0.1);
     bx(g, 1, 0.06, 0.06, C.dmetal, 0, 0.5, 0.3);
     bx(g, 0.06, 0.06, 0.8, C.dmetal, -0.3, 0.3, -0.1);
@@ -756,11 +764,14 @@ const MODELS: Record<string, ModelFn> = {
     sp(g, 0.28, '#d8c184', -0.55, 0.0, 0.65, 0, 0.55); // zandhoop
     bx(g, 0.7, 0.04, 0.12, C.dmetal, -0.15, 0.25, 0.6, -0.3); // lopende band
     for (const x of [-0.4, 0.1]) bx(g, 0.04, 0.25, 0.04, C.dmetal, x, 0, 0.6);
+    // Geen schoorsteen: alleen wat zandstof waar de band de zandhoop afschept
+    stack(g, -0.5, 0.15, 0.62, 'dust');
   },
   oilplant(g) {
     bx(g, 1.3, 0.8, 1, C.concrete, -0.2, 0, 0.2);
     wins(g, 1.3, 1, 0.4, 0.18, 4, -0.2, 0.2, 0.14);
     cy(g, 0.15, 2, '#a9a99f', 0.6, 0, -0.55, 10, 0.11);
+    stack(g, 0.6, 2.0, -0.55, 'coal');
     for (const [x, z] of [
       [0.6, 0.4],
       [0.6, 0.75],
@@ -958,6 +969,8 @@ const MODELS: Record<string, ModelFn> = {
     for (const e of [-0.12, 0.12])
       cy(g, 0.07, 0.03, C.woodd, 0.55 + e, 0.07, -0.62, 8).rotation.x = Math.PI / 2;
     mk(gDod(), mat(C.stone), g, 0.55, 0.22, -0.5, 0.1, 0.08, 0.1);
+    // Steenstof dat laag uit de groeve opwaait zolang er gehakt wordt
+    stack(g, -0.1, 0.12, 0.05, 'dust');
   },
   mineshaft(g) {
     // Mijnschacht: een houten schachttoren met een wiel bovenin, een lier en een hoop erts ernaast
@@ -987,6 +1000,7 @@ const MODELS: Record<string, ModelFn> = {
       [0.6, 0.45, '#7a5a3a'],
     ];
     for (const [x, z, c] of ore) mk(gDod(), mat(c), g, x, 0.07, z, 0.12, 0.08, 0.12);
+    stack(g, 0, 0.22, 0.5, 'dust'); // stof uit de ingang
   },
   windmill(g) {
     // Hollandse stellingmolen: taps lijf, kap en vier wieken die draaien
@@ -1140,6 +1154,7 @@ const MODELS: Record<string, ModelFn> = {
   },
   starforge(g) {
     // Donkere smelterij met een paars gloeiende smeltkroes voor sterrenmetaal
+    // (Geen rook: de paarse gloed laat al zien dat hij werkt; sterrenmetaal smelt zonder kolen)
     bx(g, 1.92, 0.05, 1.92, '#4a4c56');
     bx(g, 1.4, 0.75, 1.1, '#34363f', -0.2, 0, -0.3);
     bx(g, 1.44, 0.06, 1.14, '#565a66', -0.2, 0.75, -0.3);
@@ -1182,6 +1197,7 @@ const MODELS: Record<string, ModelFn> = {
     bx(g, 0.4, 0.4, 0.35, '#dfe3e8', 0.68, 0.15, -0.68);
     for (const y of [0.25, 0.4]) bx(g, 0.05, 0.05, 0.5, C.metal, 0.6, y, -0.4, -0.8);
     cy(g, 0.12, 0.6, '#dfe3e8', -0.75, 0.15, -0.6, 10, 0.09);
+    stack(g, -0.75, 0.75, -0.6, 'steam');
   },
   arcology(g) {
     // Getrapte woontoren met groene tuinen op elk terras en banden van glas

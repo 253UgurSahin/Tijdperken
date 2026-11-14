@@ -5,13 +5,12 @@ import { store } from '../core/store';
 import { B } from '../data/buildings';
 import { RIVAL } from '../data/rivals';
 import { G } from '../game/state';
-import { quadG } from './decals';
-import { disposeMerged, flagpole, isMesh, mat, paint } from './kit';
+import { disposeMerged, flagpole, isMesh, paint } from './kit';
 import { aimTurrets, findTurrets, type TurretState } from './turrets';
 import { makeBuilding } from './models';
 import { LAYER, puff } from './particles';
 import { S3 } from './scene';
-import { buildingsFar, changedAt, scaffold } from './sync';
+import { buildingsFar, changedAt, fireFx, fireSpots, scaffold, type FireSpot } from './sync';
 
 export const RG3 = new T3.Group();
 S3.add(RG3);
@@ -29,6 +28,8 @@ interface RivalBuildingRec {
   s: number;
   flags: T3.Object3D[];
   fires: T3.Object3D[];
+  /** De vlammen van het fijne model met hun plek, voor vonken, rook en gloed (zie fireFx in sync.ts). */
+  fireSpots: FireSpot[];
   spins: T3.Object3D[];
   /** Het draaibare geschut van een toren (zie render/turrets.ts), of null. */
   turret: TurretState | null;
@@ -105,14 +106,10 @@ function buildModel(b: RivalBuilding, rival: Rival, key: string): RivalBuildingR
   tintTop(coarse, colour, h);
   // Hun eigen vlag op een hoek, zodat je van ver ziet van wie het is
   flagpole(g, -s * 0.42, 0, -s * 0.42, Math.min(1.7, h * 0.55 + 0.5), colour);
-  if (!b.done) {
-    scaffold(g, s, Math.max(0.6, h * 0.85));
-    const floor = new T3.Mesh(quadG, mat('#a58a62'));
-    floor.scale.set(s * 0.98, 1, s * 0.98);
-    floor.position.y = 0.02;
-    g.add(floor);
-  }
+  // In aanbouw: steigers, vloer en bouwmateriaal in de stijl van hun tijdperk
+  if (!b.done) scaffold(g, s, Math.max(0.6, h * 0.85), rival.age, b.id);
   g.position.set(b.x + s / 2, 0, b.y + s / 2);
+  g.updateMatrixWorld(true);
   const flags: T3.Object3D[] = [],
     fires: T3.Object3D[] = [],
     spins: T3.Object3D[] = [];
@@ -123,7 +120,20 @@ function buildModel(b: RivalBuilding, rival: Rival, key: string): RivalBuildingR
     if (o.userData.spin) spins.push(o);
   });
   RG3.add(g);
-  return { g, m, coarse, key, h, s, flags, fires, spins, turret: findTurrets(g, b.id), flPrev: 0 };
+  return {
+    g,
+    m,
+    coarse,
+    key,
+    h,
+    s,
+    flags,
+    fires,
+    fireSpots: fireSpots(m),
+    spins,
+    turret: findTurrets(g, b.id),
+    flPrev: 0,
+  };
 }
 
 // Daken en bovenkanten krijgen een tint van hun kleur; onderaan blijven de muren zoals ze zijn
@@ -160,6 +170,7 @@ function animate(r: RivalBuildingRec, b: RivalBuilding) {
   }
   for (const f of r.flags) f.rotation.y = Math.sin(store.TM * 2 + b.id) * 0.25;
   for (const f of r.fires) f.scale.set(1, 0.85 + Math.sin(store.TM * 13 + b.id) * 0.1, 1);
+  if (b.done) for (const f of r.fireSpots) fireFx(f, b.id);
   // (userData.axis is 'x', 'y' of 'z')
   if (b.done)
     for (const o of r.spins)
