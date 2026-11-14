@@ -9,7 +9,7 @@ import { isCharging } from '../game/finale';
 import { season } from '../game/time';
 import { FAR_DIST, camDist, isFar } from './camera';
 import { GLOWS, glow } from './decals';
-import { lampSwitchAt, setCityNight } from './kit';
+import { lampSwitchAt, setCityNight, setLitLamps } from './kit';
 import { FOL } from './nodes';
 import { CAM3, PL, R3, S3, cam, hemi, sun } from './scene';
 import { TMAT } from './terrain';
@@ -161,6 +161,8 @@ export function lighting(dk: number) {
   // (hooguit MAX_GLOWS: ver uitgezoomd zijn het er soms heel veel) en de dichtstbijzijnde zes ook echt licht.
   const all = lights.filter(L => lampOn(L) > 0 && dist(L.x, L.y, cam.x, cam.y) < camDist() * 1.2);
   all.sort((a, b) => dist(a.x, a.y, cam.x, cam.y) - dist(b.x, b.y, cam.x, cam.y));
+  // Alleen de koppen van deze lampen gloeien: een lamp zonder stroom (en dus zonder lichtvlek) blijft dof
+  setLitLamps(all);
   // Eén lichtvlek alvast maken (hieronder meteen weer verborgen): dan maakt precompileNightShaders ook zijn
   // shader vooraf klaar, en komt er bij de eerste schemering op Laag geen enkele shader bij
   if (!GLOWS.length) glow(0, true);

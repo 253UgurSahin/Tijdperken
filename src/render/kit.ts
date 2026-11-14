@@ -324,8 +324,8 @@ const PALETTE: { base: string; tints: Tint[] }[] = [
     base: '#a5523e',
     tints: [
       [1, 1, 1],
-      [0.86, 0.8, 0.82],
-      [1.05, 1.14, 1.1],
+      [0.8, 0.74, 0.76],
+      [1.08, 1.18, 1.12],
       [0.92, 0.96, 1.0],
     ],
   },
@@ -343,7 +343,7 @@ const PALETTE: { base: string; tints: Tint[] }[] = [
     base: '#a3553f',
     tints: [
       [1, 1, 1],
-      [0.84, 0.78, 0.82],
+      [0.8, 0.74, 0.78],
       [1.07, 1.11, 1.03],
     ],
   },
@@ -1034,18 +1034,26 @@ function lampHash(x: number, y: number): number {
  * allemaal, dus ze gaan samen aan.
  */
 export const lampSwitchAt = (x: number, y: number) => 0.05 + 0.4 * lampHash(Math.floor(x), Math.floor(y));
-// Gedeelde waarden voor de lampkoppen: hoe donker het is, en hoe fel een brandende kop dan is
+// Gedeelde waarden voor de lampkoppen: hoe donker het is, hoe fel een brandende kop dan is, en welke
+// lampen echt branden (hun vakjes; zie setLitLamps)
+const MAX_LIT_LAMPS = 32;
 const LAMP_DARK = { value: 0 },
-  LAMP_BRIGHT = { value: 0 };
+  LAMP_BRIGHT = { value: 0 },
+  LIT_LAMP_CELLS = { value: Array.from({ length: MAX_LIT_LAMPS }, () => new T3.Vector2(-1e4, -1e4)) },
+  LIT_LAMP_COUNT = { value: 0 };
 LAMPM.emissiveIntensity = 1; // (de shader rekent de felheid zelf uit: 0.2 uit, feller als hij brandt)
 LAMPM.onBeforeCompile = shader => {
   shader.uniforms.uDark = LAMP_DARK;
   shader.uniforms.uLampBright = LAMP_BRIGHT;
+  shader.uniforms.uLitCells = LIT_LAMP_CELLS;
+  shader.uniforms.uLitCount = LIT_LAMP_COUNT;
   shader.vertexShader = shader.vertexShader
     .replace(
       '#include <common>',
       `#include <common>
       uniform float uDark;
+      uniform vec2 uLitCells[${MAX_LIT_LAMPS}];
+      uniform int uLitCount;
       varying float vLampOn;
       float lampHash(vec2 q) {
         vec3 p = fract(q.xyx * 0.1031);
@@ -1058,16 +1066,51 @@ LAMPM.onBeforeCompile = shader => {
       `#include <worldpos_vertex>
       // Het vakje waar de lamp staat (de kop zit midden in zijn vakje), en daarmee zijn eigen moment
       vec2 lampCell = floor((modelMatrix * vec4(transformed, 1.0)).xz);
-      vLampOn = clamp((uDark - 0.05 - 0.4 * lampHash(lampCell)) / 0.03, 0.0, 1.0);`,
+      vLampOn = clamp((uDark - 0.05 - 0.4 * lampHash(lampCell)) / 0.03, 0.0, 1.0);
+      // Alleen een lamp die echt licht geeft (stroom, af, in de lijst van lighting.ts) krijgt een felle kop:
+      // anders lijkt een lamp zonder lichtvlek eronder toch te werken
+      float lampListed = 0.0;
+      for (int i = 0; i < ${MAX_LIT_LAMPS}; i++) {
+        if (i >= uLitCount) break;
+        if (all(equal(floor(uLitCells[i]), lampCell))) lampListed = 1.0;
+      }
+      vLampOn *= lampListed;`,
     );
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <common>', '#include <common>\nuniform float uLampBright;\nvarying float vLampOn;')
     .replace(
       '#include <emissivemap_fragment>',
-      '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= 0.2 + vLampOn * uLampBright;',
+      `#include <emissivemap_fragment>
+      // Een brandende kop warm geel-oranje, net als de ramen en de lichtvlek (anders wordt hij spierwit)
+      totalEmissiveRadiance *= (0.2 + vLampOn * uLampBright) * mix(vec3(1.0), vec3(1.0, 0.68, 0.32), vLampOn);`,
     );
 };
 LAMPM.customProgramCacheKey = () => 'tp-lamp';
+/** De lampen die nu echt licht geven (de dichtstbijzijnde eerst): alleen hun koppen gloeien. */
+export function setLitLamps(lamps: readonly { x: number; y: number }[]): void {
+  const count = Math.min(MAX_LIT_LAMPS, lamps.length);
+  for (let i = 0; i < count; i++) LIT_LAMP_CELLS.value[i].set(Math.floor(lamps[i].x), Math.floor(lamps[i].y));
+  LIT_LAMP_COUNT.value = count;
+}
+/**
+ * Een onzichtbaar groepje met de ramen, het glas en de lampkop op één platte driehoek. In de scène gezet
+ * maakt three.js bij het vooraf klaarmaken (compile) ook hun eigen shaders klaar, ook als er nog geen huis of
+ * lantaarn staat. Onzichtbaar wordt het nooit getekend, dus het kost verder niets.
+ */
+export function nightWarmup(): T3.Group {
+  const group = new T3.Group();
+  group.name = 'nightWarmup';
+  group.visible = false;
+  const flat = new T3.BufferGeometry();
+  flat.setAttribute('position', new T3.Float32BufferAttribute(new Float32Array(9), 3));
+  flat.computeVertexNormals();
+  for (const m of [WIN, GLASS, LAMPM]) {
+    const mesh = new T3.Mesh(flat, m);
+    mesh.frustumCulled = false;
+    group.add(mesh);
+  }
+  return group;
+}
 // Zachte overgang van 0 naar 1 tussen uur a en uur b
 const ramp = (t: number, a: number, b: number) => smooth01((t - a) / (b - a));
 /**
@@ -1093,9 +1136,9 @@ export function setCityNight(dk: number, clock: number, age: number): void {
   LIT_SHARE.value.set(evening, night);
   COOL_WINDOWS.value = age >= 6 ? 1 : 0;
   WIN.emissiveIntensity = GLASS.emissiveIntensity = dk > 0.02 ? 1.3 : 0;
-  // Een brandende lampkop: van 0.2 (overdag) tot 3.7 midden in de nacht, elke lamp op zijn eigen moment
+  // Een brandende lampkop: van 0.2 (overdag) tot 1.7 midden in de nacht, elke lamp op zijn eigen moment
   LAMP_DARK.value = dk;
-  LAMP_BRIGHT.value = (dk / 0.78) * 3.5;
+  LAMP_BRIGHT.value = (dk / 0.78) * 1.5;
   BEACONM.emissiveIntensity = 1 + (dk / 0.78) * 0.8;
 }
 // Gloeiende materialen voor het Sterrentijdperk: paars sterrenmetaal en roze fusie
