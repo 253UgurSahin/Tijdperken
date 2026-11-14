@@ -3,6 +3,7 @@ import * as T3 from 'three';
 import { store } from '../core/store';
 import { screenRight } from '../core/view';
 import { $ } from '../util/dom';
+import { SUN_NOON } from '../util/sunpath';
 import { CX, CY } from '../config';
 import { resizePost } from './post';
 
@@ -39,6 +40,11 @@ S3.fog = new T3.Fog(FOGC.clone(), 60, 160);
 export const hemi = new T3.HemisphereLight(0xdfe8f5, 0x3a4628, 0.55);
 S3.add(hemi);
 export const sun = new T3.DirectionalLight(0xfff0d8, 0.95);
+/**
+ * Richting naar de zon (overdag) of de maan ('s nachts). lighting.ts zet hem elk beeldje naar de klok,
+ * camera.ts zet er het schaduwlicht mee neer.
+ */
+export const SUN_DIR = new T3.Vector3(...SUN_NOON);
 sun.castShadow = true;
 sun.shadow.mapSize.set(LOWQ ? 1024 : 2048, LOWQ ? 1024 : 2048);
 sun.shadow.bias = -0.0006;

@@ -3,7 +3,7 @@ import * as T3 from 'three';
 import { store } from '../core/store';
 import { DEFAULT_YAW, viewYaw } from '../core/view';
 import { H, TAU, W } from '../config';
-import { CAM3, S3, VH, VW, cam, sun } from './scene';
+import { CAM3, S3, SUN_DIR, VH, VW, cam, sun } from './scene';
 import { clamp } from '../util/math';
 
 export const camDist = () => 27 / cam.z;
@@ -43,15 +43,28 @@ export function updateCamera() {
   // Schaduw in een vierkant rond het midden van het beeld (ook op brede schermen). Verder uitgezoomd dan
   // vroeger kon, groeit het niet verder mee: zo blijft de schaduw scherp en kost hij niet meer werk.
   const sc = Math.max(14, Math.min(d, FAR_DIST) * 0.9 * Math.max(1, CAM3.aspect / 1.78));
+  // De zon (of maan) draait mee met de klok (SUN_DIR, zie lighting.ts). Staat hij laag, dan valt het vak van de
+  // schaduwkaart langgerekt over de grond: in de zonrichting maken we het daarom korter (k).
+  const sinEl = SUN_DIR.y,
+    k = clamp(sinEl / 0.83, 0.5, 1);
+  // Zo ver reikt de grond aan de zonkant van het vak de diepte in. De zon staat zo ver weg dat die grond (en
+  // wat erop staat) nog vóór de schaduwcamera ligt; anders ontbreken daar schaduwen als je ver uitzoomt.
+  const sunSide = (sc * k * Math.sqrt(1 - sinEl * sinEl)) / sinEl,
+    D = Math.max(55.6, sunSide + 20);
   const sh = sun.shadow.camera;
   sh.left = -sc;
   sh.right = sc;
-  sh.top = sc;
-  sh.bottom = -sc;
+  sh.top = sc * k;
+  sh.bottom = -sc * k;
   sh.near = 1;
-  sh.far = 220;
+  sh.far = 2 * D + 20;
   sh.updateProjectionMatrix();
-  sun.position.set(cam.x - 28, 46, cam.y + 14);
+  // De marge tegen strepen in de schaduw ("acne") is een deel van de diepte van het vak. We delen door die
+  // diepte, zodat de marge in meters gelijk blijft als het vak dieper wordt. Een lage zon scheert over daken
+  // en hellingen; die krijgt nog wat extra marge langs de vlakken.
+  sun.shadow.bias = -0.13 / (sh.far - sh.near);
+  sun.shadow.normalBias = 0.02 + 0.03 * Math.max(0, 1 - sinEl / 0.83);
+  sun.position.set(cam.x + SUN_DIR.x * D, SUN_DIR.y * D, cam.y + SUN_DIR.z * D);
   sun.target.position.set(cam.x, 0, cam.y);
   sun.target.updateMatrixWorld();
   snapShadow(sc);
@@ -68,13 +81,17 @@ const inLight = new T3.Vector3(),
   shift = new T3.Vector3();
 function snapShadow(sc: number) {
   const sh = sun.shadow;
+  // Dezelfde verkorting k als in updateCamera (daar uitgelegd)
+  const k = clamp(SUN_DIR.y / 0.83, 0.5, 1);
   sun.updateMatrixWorld();
   sh.updateMatrices(sun); // zet de schaduwcamera op zijn plek
-  const texel = (2 * sc) / sh.mapSize.x;
+  // (in de hoogte is het vak k keer zo kort, dus zijn de pixels daar ook kleiner)
+  const texelX = (2 * sc) / sh.mapSize.x,
+    texelY = (2 * sc * k) / sh.mapSize.y;
   inLight.copy(sun.target.position).applyMatrix4(sh.camera.matrixWorldInverse);
   shift.set(
-    Math.round(inLight.x / texel) * texel - inLight.x,
-    Math.round(inLight.y / texel) * texel - inLight.y,
+    Math.round(inLight.x / texelX) * texelX - inLight.x,
+    Math.round(inLight.y / texelY) * texelY - inLight.y,
     0,
   );
   if (shift.x === 0 && shift.y === 0) return;
