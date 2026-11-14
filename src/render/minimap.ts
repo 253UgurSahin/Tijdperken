@@ -237,9 +237,14 @@ export function renderMini() {
   }
 }
 function miniTo(e: PointerEvent) {
+  // Het canvas staat met object-fit: contain in zijn vak: de kaart is een vierkant in het midden, met
+  // eromheen lege randen. Reken daarom vanaf dat getekende vierkant, niet vanaf het hele vak.
   const r = mini.getBoundingClientRect(),
-    X = ((e.clientX - r.left) / r.width) * MW,
-    Y = ((e.clientY - r.top) / r.height) * MH;
+    side = Math.min(r.width, r.height) || 1,
+    left = r.left + (r.width - side) / 2,
+    top = r.top + (r.height - side) / 2,
+    X = ((e.clientX - left) / side) * MW,
+    Y = ((e.clientY - top) / side) * MH;
   // Terugrekenen: eerst het midden eraf, dan de draaiing en de schaal van miniXf ongedaan maken
   const [c, s, , , ox, oy] = miniXf(),
     k2 = c * c + s * s,

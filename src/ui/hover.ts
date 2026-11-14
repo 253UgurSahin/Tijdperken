@@ -34,6 +34,10 @@ function ownUnitTip(u: Unit): string {
 
 // Tooltip bij de muis
 let tipSize = { width: 0, height: 0 };
+// Wat we het laatst in de tooltip zetten (en het eerste stukje ervan, om te zien of iemand anders hem
+// intussen heeft gevuld, zoals de uitleg bij de grondstoffen of het bouwen)
+let lastTipText = '';
+let lastTipNode: ChildNode | null = null;
 export function updateHover() {
   const tip = $('#hovertip');
   if (!(drag && drag.mode === 'pan')) {
@@ -122,9 +126,15 @@ export function updateHover() {
     tip.hidden = true;
     return;
   }
-  tip.innerHTML = h;
-  tip.hidden = false;
-  const r = tip.getBoundingClientRect();
+  // Alleen opnieuw opbouwen en meten als de tekst echt anders is (dit gebeurt nu ook zonder muisbeweging)
+  if (h !== lastTipText || tip.hidden || tip.firstChild !== lastTipNode) {
+    lastTipText = h;
+    tip.innerHTML = h;
+    lastTipNode = tip.firstChild;
+    tip.hidden = false;
+    tipSize = tip.getBoundingClientRect();
+  }
+  const r = tipSize;
   tip.style.left = clamp(mouse.sx + 16, 8, VW - r.width - 8) + 'px';
   tip.style.top = clamp(mouse.sy + 18, 8, VH - r.height - 60) + 'px';
 }

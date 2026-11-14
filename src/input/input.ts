@@ -109,7 +109,11 @@ function trackPointer(sx: number, sy: number): void {
 /** De camera is verschoven: dan ligt onder dezelfde muisplek een andere tegel (zie main.ts). */
 export function refreshMouseTile(): void {
   if (!mouse.in || mouse.touch) return;
-  [mouse.tx, mouse.ty] = s2t(mouse.sx, mouse.sy);
+  const [tx, ty] = s2t(mouse.sx, mouse.sy);
+  // Door de camera ligt er iets anders onder de muis: dan moet de uitleg bij de muis ook opnieuw
+  if (Math.abs(tx - mouse.tx) > 0.01 || Math.abs(ty - mouse.ty) > 0.01) mouse.moved = true;
+  mouse.tx = tx;
+  mouse.ty = ty;
   hoverChunk = [Math.floor(mouse.tx / CS), Math.floor(mouse.ty / CS)];
 }
 /** Alles loslaten: na alt-tab of een verloren vinger mag er geen sleep blijven hangen. */

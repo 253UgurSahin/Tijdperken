@@ -255,6 +255,7 @@ function tick(now: number) {
   if (uiT <= 0 || store.uiDirty) {
     uiT = 0.25;
     store.uiDirty = false;
+    mouse.moved = true; // de wereld onder de muis verandert ook zonder bewegen: uitleg bij de muis bijwerken
     if (store.curAge !== G.age) onAgeChange();
     updateHeader();
     updateWorldTop();
