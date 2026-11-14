@@ -11,12 +11,13 @@ import { FAR_DIST, camDist, isFar } from './camera';
 import { GLOWS, glow } from './decals';
 import { GLASS, WIN } from './kit';
 import { FOL } from './nodes';
-import { CAM3, PL, R3, S3, SUN_DIR, SUN_NOON, cam, hemi, sun } from './scene';
+import { CAM3, PL, R3, S3, SUN_DIR, cam, hemi, sun } from './scene';
 import { TMAT } from './terrain';
 import { SNOW_COVER } from './terrainlook';
 import { setBloomDarkness, setGradeTime } from './post';
 import { setScatterSeason } from './scatter';
 import { dist } from '../util/math';
+import { sunDirAt } from '../util/sunpath';
 
 // Zonlicht: perzik bij zonsopkomst, warm wit rond 12 uur, goud en dan oranje bij zonsondergang.
 // 's Nachts schijnt de maan (COLD).
@@ -97,32 +98,23 @@ function updateMood(dt: number) {
   moodFog.lerp(wantFog, k);
 }
 /** Hoe bewolkt het is (0..1): het trekt dicht als het gaat regenen of sneeuwen, en klaart daarna langzaam op. */
-let wet = 0;
+let wet = 0,
+  lastGameHour = -1;
 function updateOvercast(dt: number) {
   const want = G.rain ? 1 : 0;
+  // Springt de speltijd (nieuw spel, opgeslagen spel geladen), dan meteen het goede weer: anders blijft
+  // een droog nieuw spel na een regenachtig spel nog een minuut grijs
+  const gameHour = G.day * 24 + G.clock,
+    jumped = gameHour < lastGameHour || gameHour - lastGameHour > 1;
+  lastGameHour = gameHour;
+  if (jumped) wet = want;
   // In zo'n 15 tellen dicht, in ongeveer een minuut weer open
   wet += (want - wet) * (1 - Math.exp(-dt / (want > wet ? 5 : 20)));
 }
 
-// ---- De zon draait mee met de klok ----
-const DEG = Math.PI / 180;
-// Rond 12 uur staat de zon precies waar hij altijd stond (zie scene.ts)
-const NOON_AZ = Math.atan2(SUN_NOON.z, SUN_NOON.x),
-  NOON_EL = Math.asin(SUN_NOON.y);
+// ---- De zon draait mee met de klok (de baan zelf staat in util/sunpath.ts) ----
 // 's Nachts staat er een vaste maan, rechts in het standaardbeeld: zo licht de andere kant van de huizen koel op
 const MOON_DIR = new T3.Vector3(0.62, 0.72, -0.3).normalize();
-/**
- * Waar de zon staat op dit uur (als richting naar de zon). Om half zes laag achter de stad (in het standaardbeeld),
- * om 12 uur zoals altijd, om 20 uur laag links vóór: 65° om naar elke kant. Zo vangen 's avonds de muren die je
- * ziet het gouden licht. Nooit lager dan 19°, anders worden de schaduwen eindeloos lang.
- */
-function sunAt(clock: number, out: T3.Vector3): T3.Vector3 {
-  // 0 = 5:30, 0,5 = 12:00, 1 = 20:00 (de ochtend is wat korter dan de middag en avond)
-  const t = clock < 12 ? 0.5 * Math.max(0, (clock - 5.5) / 6.5) : 0.5 + 0.5 * Math.min(1, (clock - 12) / 8);
-  const el = Math.max(19 * DEG, 10 * DEG + (NOON_EL - 10 * DEG) * Math.sin(Math.PI * t)),
-    az = NOON_AZ - 65 * DEG * (2 * t - 1);
-  return out.set(Math.cos(el) * Math.cos(az), Math.sin(el), Math.cos(el) * Math.sin(az));
-}
 const sunNow = new T3.Vector3();
 let lastTM = 0;
 const AUT: Record<string, string> = { oak: '#c9772f', birch: '#d9a83a' },
@@ -184,12 +176,14 @@ export function lighting(dk: number) {
   lastTM = store.TM;
   updateMood(dt);
   updateOvercast(dt);
-  // Richting van het licht (camera.ts zet daar de schaduwen mee neer). 's Nachts is het de maan; de wissel
-  // gebeurt pas als het al flink donker is, en het licht is dan even zwakker, zodat je de schaduwen niet ziet
-  // ronddraaien.
-  sunAt(G.clock, sunNow);
-  const toMoon = smooth(0.5, 0.78, dk);
-  SUN_DIR.copy(sunNow).lerp(MOON_DIR, toMoon).normalize();
+  // Richting van het licht (camera.ts zet daar de schaduwen mee neer). 's Nachts is het de maan. De wissel is
+  // kort en valt als het al flink donker is; het licht zakt dan even bijna helemaal weg en de richting draait
+  // pas als het het zwakst is, zodat je de schaduwen niet ziet ronddraaien.
+  sunNow.set(...sunDirAt(G.clock));
+  const toMoon = smooth(0.6, 0.72, dk);
+  SUN_DIR.copy(sunNow)
+    .lerp(MOON_DIR, smooth(0.35, 0.65, toMoon))
+    .normalize();
   const sinEl = SUN_DIR.y;
   // Hoe laag de zon staat: 0 rond 12 uur, 1 vlak boven de horizon. Laag licht is warm.
   const low = smooth(0.83, 0.33, sunNow.y);
@@ -204,18 +198,19 @@ export function lighting(dk: number) {
   // is het nacht (dk loopt van 0 overdag tot 0,78 midden in de nacht)
   const dim = 0.78 * smooth(0.1, 0.78, dk);
   // Een lage zon valt schuin op de grond, die daardoor donkerder wordt: dat maken we voor een deel goed.
-  // Onder een grijze lucht is de zon zwakker (zachter licht, vagere schaduwen). 's Nachts is het maanlicht
-  // wat sterker dan het licht van de lucht, zodat de maan echte schaduwen geeft.
+  // Onder een grijze lucht is de zon veel zwakker en de lucht wat lichter: ongeveer even licht, maar zacht,
+  // met vage schaduwen. 's Nachts is het maanlicht wat sterker dan het licht van de lucht, zodat de maan
+  // echte schaduwen geeft.
   const lowLift = 1 + (0.83 / Math.max(sinEl, 0.4) - 1) * 0.45;
   sun.intensity =
-    (0.95 * (1 - dim) + 0.24 * dim) * lowLift * (1 - 0.5 * Math.sin(Math.PI * toMoon)) * (1 - 0.45 * wet);
+    (0.95 * (1 - dim) + 0.24 * dim) * lowLift * (1 - 0.85 * Math.sin(Math.PI * toMoon)) * (1 - 0.6 * wet);
   hemi.color
     .copy(SKYD)
     .lerp(SKY_DUSK, dusk)
     .lerp(OVERCAST, wet * 0.6)
     .lerp(SKYN, dim);
   hemi.groundColor.copy(BOUNCE_DAY).lerp(BOUNCE_NIGHT, Math.min(1, dk / 0.78));
-  hemi.intensity = (0.55 * (1 - dim * 0.7) + Math.max(0, 0.83 - sinEl) * 0.22) * (1 + 0.15 * wet);
+  hemi.intensity = (0.55 * (1 - dim * 0.7) + Math.max(0, 0.83 - sinEl) * 0.22) * (1 + 0.3 * wet);
   // Bij zonsopkomst en -ondergang kleurt de nevel aan de horizon warm; bij regen grijs
   fogNow
     .copy(moodFog)
@@ -223,7 +218,7 @@ export function lighting(dk: number) {
     .lerp(OVERCAST, wet * 0.6)
     .lerp(FOGN, dk);
   finaleSky();
-  setGradeTime(dusk * (1 - wet));
+  setGradeTime(dusk * (1 - wet), wet);
   // (mist en achtergrondkleur zijn gezet in scene.ts)
   S3.fog!.color.copy(fogNow);
   (S3.background as T3.Color).copy(fogNow);

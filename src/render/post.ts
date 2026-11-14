@@ -34,11 +34,12 @@ const GradeShader = {
     uShoulder: { value: 1 },
     uNight: { value: 0 },
     uSplit: { value: 1 },
+    uWet: { value: 0 },
   },
   vertexShader: `varying vec2 vUv;
     void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 uTexel; uniform float uSharpen; uniform float uShoulder;
-    uniform float uNight; uniform float uSplit;
+    uniform float uNight; uniform float uSplit; uniform float uWet;
     varying vec2 vUv;
     ${shoulder('softShoulder')}
     void main() {
@@ -56,6 +57,8 @@ const GradeShader = {
       c = mix(vec3(l), c, 1.12);                         // verzadiging
       // Warm licht, koele schaduw: lichte delen een tikje warmer, donkere een tikje koeler
       c += (l - 0.45) * 0.04 * uSplit * vec3(1.0, 0.3, -0.9);
+      // Bewolkt (regen, sneeuw): de kleuren worden wat grauwer
+      c = mix(c, vec3(l), 0.15 * uWet);
       // Maanlicht: 's nachts worden donkere, kleurloze delen (gras, muren, daken) blauwgrijs. Wat fel, warm
       // of echt gekleurd is (ramen, lampen, vuur, teamkleuren, de groene selectiering) blijft zoals het is.
       if (uNight > 0.0) {
@@ -180,10 +183,14 @@ export function setBloomDarkness(dk: number) {
   grade!.uniforms.uNight.value = Math.min(1, dk / 0.78);
 }
 
-/** Warm licht en koele schaduw: 1 overdag, sterker bij zonsopkomst en -ondergang (dusk 0..1). */
-export function setGradeTime(dusk: number) {
+/**
+ * Warm licht en koele schaduw: 1 overdag, sterker bij zonsopkomst en -ondergang (dusk 0..1).
+ * wet: hoe bewolkt het is (0..1), dan worden de kleuren wat grauwer.
+ */
+export function setGradeTime(dusk: number, wet: number) {
   if (!grade) return;
   grade.uniforms.uSplit.value = 1 + 0.8 * dusk;
+  grade.uniforms.uWet.value = wet;
 }
 
 export function renderFrame() {

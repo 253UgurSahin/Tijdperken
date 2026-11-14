@@ -67,7 +67,7 @@ export function updateCamera() {
   sun.position.set(cam.x + SUN_DIR.x * D, SUN_DIR.y * D, cam.y + SUN_DIR.z * D);
   sun.target.position.set(cam.x, 0, cam.y);
   sun.target.updateMatrixWorld();
-  snapShadow(sc, k);
+  snapShadow(sc);
   const fog = S3.fog as T3.Fog;
   fog.near = d * 1.15;
   fog.far = d * 2.9;
@@ -79,8 +79,10 @@ export function updateCamera() {
  */
 const inLight = new T3.Vector3(),
   shift = new T3.Vector3();
-function snapShadow(sc: number, k: number) {
+function snapShadow(sc: number) {
   const sh = sun.shadow;
+  // Dezelfde verkorting k als in updateCamera (daar uitgelegd)
+  const k = clamp(SUN_DIR.y / 0.83, 0.5, 1);
   sun.updateMatrixWorld();
   sh.updateMatrices(sun); // zet de schaduwcamera op zijn plek
   // (in de hoogte is het vak k keer zo kort, dus zijn de pixels daar ook kleiner)
