@@ -9,7 +9,7 @@ import { isCharging } from '../game/finale';
 import { season } from '../game/time';
 import { FAR_DIST, camDist, isFar } from './camera';
 import { GLOWS, glow } from './decals';
-import { lampSwitchAt, setCityNight, setLitLamps } from './kit';
+import { lampSwitchAt, nightWarmup, setCityNight, setLitLamps } from './kit';
 import { FOL } from './nodes';
 import { CAM3, PL, R3, S3, cam, hemi, sun } from './scene';
 import { TMAT } from './terrain';
@@ -46,6 +46,8 @@ const MAX_GLOWS = 96;
 // Hangen de lampen (PL) nu in de scène, en zijn we "ver" voor de lampen? (zie lighting)
 let lampsIn = true,
   lampsFar = false;
+// Staan de onzichtbare ramen en lampkop voor het vooraf klaarmaken al in de scène? (zie lighting)
+let warmupAdded = false;
 /**
  * Lampen in of uit de scène halen betekent andere shaders (met of zonder puntlichten). Die van de nacht
  * maken we één keer vooraf klaar, bij het eerste beeldje: anders hapert het spel bij de eerste schemering.
@@ -166,6 +168,11 @@ export function lighting(dk: number) {
   // Eén lichtvlek alvast maken (hieronder meteen weer verborgen): dan maakt precompileNightShaders ook zijn
   // shader vooraf klaar, en komt er bij de eerste schemering op Laag geen enkele shader bij
   if (!GLOWS.length) glow(0, true);
+  // Om dezelfde reden één keer onzichtbare ramen en een lampkop in de scène (zie nightWarmup in kit.ts)
+  if (!warmupAdded) {
+    warmupAdded = true;
+    S3.add(nightWarmup());
+  }
   let gi = 0;
   for (const L of all) {
     if (gi >= MAX_GLOWS) break;

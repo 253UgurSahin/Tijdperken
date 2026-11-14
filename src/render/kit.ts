@@ -2,6 +2,9 @@
 import * as T3 from 'three';
 import { TAU } from '../config';
 import { hash2 } from '../util/random';
+import { litShares } from './nightclock';
+
+export { lampSwitchAt, litShares } from './nightclock';
 
 /** Materiaal-opties: e = gloeikleur, ei = gloeisterkte, m = metaalachtig, r = ruwheid, t = doorzichtig, o = dekking, b = zonder licht. */
 export interface MatOpts {
@@ -146,27 +149,30 @@ export function mergeStatic(g: T3.Group): T3.Group {
 
 // Delen met hetzelfde (bijzondere) materiaal tot één mesh, zonder kleuren per hoekpunt
 function mergeSameMaterial(g: T3.Object3D, parts: T3.Mesh[], material: T3.Material): void {
-  // Ramen en glas: elk deel begint op een veelvoud van 36 hoekpunten (één blok), zodat de raam-shader
-  // elke ruit aan zijn nummer herkent (zie windowShader). De opvulling is onzichtbaar (driehoekjes zonder oppervlak).
-  const paneSize = material === WIN || material === GLASS ? 36 : 1;
-  const slots = (count: number) => Math.ceil(count / paneSize) * paneSize;
   let n = 0;
   const gs = parts.map(o => {
     o.updateMatrix();
     const q = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
     q.applyMatrix4(o.matrix);
-    n += slots(q.attributes.position.count);
+    n += q.attributes.position.count;
     return q;
   });
   const pos = new Float32Array(n * 3);
+  // Ramen en glas: elk deel krijgt zijn eigen nummer (winPane), zodat de raam-shader elke ruit als geheel aan
+  // of uit zet. Ook een glazen koepel van honderden hoekpunten is zo één ruit (zie windowShader).
+  const isWindow = material === WIN || material === GLASS;
+  const paneIds = isWindow ? new Float32Array(n) : null;
   let k = 0;
-  for (const q of gs) {
+  gs.forEach((q, part) => {
+    const count = q.attributes.position.count;
     pos.set((q.attributes.position as T3.BufferAttribute).array, k * 3);
-    k += slots(q.attributes.position.count);
+    paneIds?.fill(part, k, k + count);
+    k += count;
     q.dispose();
-  }
+  });
   const mg = new T3.BufferGeometry();
   mg.setAttribute('position', new T3.BufferAttribute(pos, 3));
+  if (paneIds) mg.setAttribute('winPane', new T3.BufferAttribute(paneIds, 1));
   mg.computeVertexNormals();
   mg.computeBoundingSphere();
   mg.userData.merged = true; // hoort bij precies één model (zie disposeMerged)
@@ -319,14 +325,15 @@ const PALETTE: { base: string; tints: Tint[] }[] = [
       [1.03, 0.95, 1.02],
     ],
   },
-  // dakpannen: oranjerood, dieper rood, oranjer, bruiner
+  // dakpannen: oranjerood, dieper rood, oranjer, bruiner, verbleekt
   {
     base: '#a5523e',
     tints: [
       [1, 1, 1],
       [0.8, 0.74, 0.76],
       [1.08, 1.18, 1.12],
-      [0.92, 0.96, 1.0],
+      [0.84, 0.88, 0.92],
+      [1.12, 1.1, 1.08],
     ],
   },
   // riet: strogeel, verweerd, vers
@@ -962,17 +969,13 @@ function windowShader(shader: T3.Shader): void {
   shader.uniforms.uLitShare = LIT_SHARE;
   shader.uniforms.uCool = COOL_WINDOWS;
   shader.vertexShader = shader.vertexShader
-    .replace('#include <common>', '#include <common>\nvarying vec3 vWinId;')
+    .replace('#include <common>', '#include <common>\nattribute float winPane;\nvarying vec3 vWinId;')
     .replace(
       '#include <worldpos_vertex>',
       `#include <worldpos_vertex>
-    // Het nummer van de ruit: elke ruit is 36 hoekpunten (zie mergeSameMaterial). Uit de hoekpunten
-    // zelf en niet uit de plek op het scherm, anders kan de grens van een vakje dwars door een ruit lopen.
-    #if __VERSION__ >= 300
-      float winPane = float(gl_VertexID / 36);
-    #else
-      float winPane = 0.0;
-    #endif
+    // Het nummer van de ruit komt uit de vorm zelf (zie mergeSameMaterial) en niet uit de plek op het scherm,
+    // anders kan de grens van een vakje dwars door een ruit lopen. Een losse ruit zonder nummer heeft
+    // overal dezelfde waarde, dus ook die gaat in zijn geheel aan of uit.
     // (+0.5: het afronden in de pixel-shader blijft zo veilig, ook met kleine rekenfoutjes)
     vWinId = vec3(modelMatrix[3].x * 2.0, modelMatrix[3].z * 2.0, winPane) + 0.5;`,
     );
@@ -1016,30 +1019,16 @@ for (const m of [WIN, GLASS]) {
 // setCityNight ze 's nachts feller zetten zonder elk model langs te gaan.
 export const LAMPM = mat('#fff2c4', { e: '#fff2c4', ei: 0.2 }) as T3.MeshStandardMaterial;
 export const BEACONM = mat('#ff4a3a', { e: '#ff4a3a' }) as T3.MeshStandardMaterial;
-const fract = (v: number) => v - Math.floor(v);
-// Een vast toevalsgetal (0..1) bij vakje (x, y). Precies dezelfde som staat in de lamp-shader hieronder.
-function lampHash(x: number, y: number): number {
-  let a = fract(x * 0.1031),
-    b = fract(y * 0.1031),
-    c = a;
-  const d = a * (b + 33.33) + b * (c + 33.33) + c * (a + 33.33);
-  a += d;
-  b += d;
-  c += d;
-  return fract((a + b) * c);
-}
-/**
- * Bij welke donkerte (0..0.78) de lamp op plek (x, y) aangaat: voor elke lamp een vast, eigen moment, zodat ze
- * 's avonds één voor één aangaan. De lichtvlek en het licht (lighting.ts) en de lampkop (shader) gebruiken dit
- * allemaal, dus ze gaan samen aan.
- */
-export const lampSwitchAt = (x: number, y: number) => 0.05 + 0.4 * lampHash(Math.floor(x), Math.floor(y));
 // Gedeelde waarden voor de lampkoppen: hoe donker het is, hoe fel een brandende kop dan is, en welke
 // lampen echt branden (hun vakjes; zie setLitLamps)
-const MAX_LIT_LAMPS = 32;
+// (evenveel als de lichtvlekken in lighting.ts, MAX_GLOWS: elke lamp met een vlek krijgt ook een felle kop;
+// twee vakjes per vec4, zodat het maar 48 plekken voor shaderwaarden kost)
+const MAX_LIT_LAMPS = 96;
 const LAMP_DARK = { value: 0 },
   LAMP_BRIGHT = { value: 0 },
-  LIT_LAMP_CELLS = { value: Array.from({ length: MAX_LIT_LAMPS }, () => new T3.Vector2(-1e4, -1e4)) },
+  LIT_LAMP_CELLS = {
+    value: Array.from({ length: MAX_LIT_LAMPS / 2 }, () => new T3.Vector4(-1e4, -1e4, -1e4, -1e4)),
+  },
   LIT_LAMP_COUNT = { value: 0 };
 LAMPM.emissiveIntensity = 1; // (de shader rekent de felheid zelf uit: 0.2 uit, feller als hij brandt)
 LAMPM.onBeforeCompile = shader => {
@@ -1052,7 +1041,7 @@ LAMPM.onBeforeCompile = shader => {
       '#include <common>',
       `#include <common>
       uniform float uDark;
-      uniform vec2 uLitCells[${MAX_LIT_LAMPS}];
+      uniform vec4 uLitCells[${MAX_LIT_LAMPS / 2}];
       uniform int uLitCount;
       varying float vLampOn;
       float lampHash(vec2 q) {
@@ -1070,9 +1059,10 @@ LAMPM.onBeforeCompile = shader => {
       // Alleen een lamp die echt licht geeft (stroom, af, in de lijst van lighting.ts) krijgt een felle kop:
       // anders lijkt een lamp zonder lichtvlek eronder toch te werken
       float lampListed = 0.0;
-      for (int i = 0; i < ${MAX_LIT_LAMPS}; i++) {
-        if (i >= uLitCount) break;
-        if (all(equal(floor(uLitCells[i]), lampCell))) lampListed = 1.0;
+      for (int i = 0; i < ${MAX_LIT_LAMPS / 2}; i++) {
+        if (2 * i >= uLitCount) break;
+        vec4 cells = floor(uLitCells[i]);
+        if (all(equal(cells.xy, lampCell)) || all(equal(cells.zw, lampCell))) lampListed = 1.0;
       }
       vLampOn *= lampListed;`,
     );
@@ -1089,7 +1079,13 @@ LAMPM.customProgramCacheKey = () => 'tp-lamp';
 /** De lampen die nu echt licht geven (de dichtstbijzijnde eerst): alleen hun koppen gloeien. */
 export function setLitLamps(lamps: readonly { x: number; y: number }[]): void {
   const count = Math.min(MAX_LIT_LAMPS, lamps.length);
-  for (let i = 0; i < count; i++) LIT_LAMP_CELLS.value[i].set(Math.floor(lamps[i].x), Math.floor(lamps[i].y));
+  for (let i = 0; i < count; i++) {
+    const cells = LIT_LAMP_CELLS.value[i >> 1],
+      x = Math.floor(lamps[i].x),
+      y = Math.floor(lamps[i].y);
+    if (i % 2 === 0) cells.setX(x).setY(y);
+    else cells.setZ(x).setW(y);
+  }
   LIT_LAMP_COUNT.value = count;
 }
 /**
@@ -1110,22 +1106,6 @@ export function nightWarmup(): T3.Group {
     group.add(mesh);
   }
   return group;
-}
-// Zachte overgang van 0 naar 1 tussen uur a en uur b
-const ramp = (t: number, a: number, b: number) => smooth01((t - a) / (b - a));
-/**
- * Welk deel van de ramen nu aan mag: [avond, nacht]. 's Avonds gaan ze tussen 18:00 en 21:00 huis voor huis
- * aan, tot ongeveer 85%. Na half twaalf gaan ze per raam weer uit, tot zo'n 15% om half drie. Vroeg in de
- * ochtend gaan er een paar weer aan, en bij zonsopkomst gaan alle ramen uit.
- */
-export function litShares(clock: number): [number, number] {
-  // Uren sinds het middaguur, zodat de hele nacht één doorlopend stuk is (18:00 = 6, middernacht = 12)
-  const t = (clock + 12) % 24;
-  // Bij het invallen van het donker gaan er snel veel lichten aan, daarna steeds minder (rond 19:10 de helft)
-  const dusk = 1 - Math.pow(1 - Math.min(1, Math.max(0, (t - 6) / 3)), 1.6);
-  const evening = 0.85 * smooth01(dusk) * (1 - ramp(t, 18, 18.35));
-  const night = 1 - 0.82 * ramp(t, 11.5, 14.5) - 0.05 * ramp(t, 14.5, 16.5) + 0.27 * ramp(t, 16.5, 17.75);
-  return [evening, night];
 }
 /**
  * Licht in de stad bij donker (dk: 0 = dag, 0.78 = nacht; clock: uur van de dag; age: tijdperk). Alleen

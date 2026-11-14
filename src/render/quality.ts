@@ -5,14 +5,13 @@ import type * as T3 from 'three';
 import { store } from '../core/store';
 import { SET, saveSet } from '../core/settings';
 import { configurePost, type PostSettings } from './post';
-import { PL, S3, requestResize, resize, sun } from './scene';
+import { PL, requestResize, resize, sun } from './scene';
 import { setScatterDensity } from './scatter';
 import { setFineDetail } from './terrainlook';
 import { setNodeDetail } from './nodes';
 import { precompileNightShaders } from './lighting';
 import { G } from '../game/state';
 import { darkness } from '../game/time';
-import { nightWarmup } from './kit';
 
 /** Eén kwaliteitsstand: naam, resolutie-factor, maximum aantal pixels, schaduwen en nabewerking. */
 interface QualityLevel extends PostSettings {
@@ -91,9 +90,6 @@ let slowBest = 0;
 let lampCount = -1;
 // true: de nachtshaders horen nog bij een ander aantal lampen (na een automatische stap overdag)
 let nightShadersStale = false;
-// Onzichtbare ramen en lampkop in de scène: zo maakt precompileNightShaders ook hun eigen shaders vooraf
-// klaar, ook als er nog geen huis of lantaarn staat (onzichtbaar kost het tekenen niets)
-S3.add(nightWarmup());
 /**
  * Een stap omlaag die we nog beoordelen: hoe vloeiend het ervoor liep, de stand en resolutie van daarvoor (om
  * terug te kunnen) en hoeveel metingen van een seconde er sindsdien zijn geweest.
