@@ -29,5 +29,9 @@ export function reportError(where: string, e: unknown): void {
 }
 
 // Fouten buiten de spellus om (klikken, timers, beloftes) komen hier terecht
-addEventListener('error', e => reportError('de pagina', e.error || e.message));
+addEventListener('error', e => {
+  // Deze melding van de browser is onschuldig (een schermmeting die een beeldje later komt): niet melden
+  if (String(e.message).includes('ResizeObserver loop')) return;
+  reportError('de pagina', e.error || e.message);
+});
 addEventListener('unhandledrejection', e => reportError('een belofte', e.reason));

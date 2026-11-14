@@ -7,6 +7,7 @@ import { S3 } from './scene';
 import { G } from '../game/state';
 import { darkness, season } from '../game/time';
 import { DETAIL } from './textures';
+import { SNOW_COVER } from './weather';
 import { TER, ter } from '../world/world';
 
 // Golfpatroon (normal map) dat langzaam verschuift, zodat het water glinstert in de zon.
@@ -139,6 +140,7 @@ WMAT.onBeforeCompile = shader => {
   shader.uniforms.uMapSize = MAP_SIZE;
   shader.uniforms.uSunLit = SUN_LIT;
   shader.uniforms.uRain = RAIN;
+  shader.uniforms.uSnowCover = SNOW_COVER;
   shader.vertexShader =
     'varying vec3 vWPos;\n' +
     shader.vertexShader.replace(
@@ -148,7 +150,7 @@ WMAT.onBeforeCompile = shader => {
     );
   shader.fragmentShader =
     'uniform sampler2D uDepth;\nuniform sampler2D uDetail;\nuniform float uTime;\nuniform vec2 uMapSize;\n' +
-    'uniform float uSunLit;\nuniform float uRain;\nvarying vec3 vWPos;\n' +
+    'uniform float uSunLit;\nuniform float uRain;\nuniform float uSnowCover;\nvarying vec3 vWPos;\n' +
     shader.fragmentShader
       .replace('#include <color_fragment>', '#include <color_fragment>\n' + WATER_COLOR)
       // Twee golfpatronen die elk een andere kant op drijven: minder herhaling, levendiger glinsteren.
@@ -225,6 +227,19 @@ const WATER_COLOR = `
   }
   diffuseColor.rgb = mix(waterCol, vec3(0.82, 0.88, 0.88), foam);
   diffuseColor.a = mix(0.68, 0.92, smoothstep(0.0, 0.5, depth)) * opacity / 0.86 + foam * 0.35;
+  // Winter: ondiep water (meren, kusten) vriest dicht vanaf de oever; diepe zee blijft open.
+  // Hoe verder de sneeuw is, hoe verder het ijs reikt; de rand is grillig door de gladde ruis (a).
+  if (uSnowCover > 0.01) {
+    float iceNoise = texture2D(uDetail, vWPos.xz * 0.21).a;
+    float reach = uSnowCover * 0.32 + (iceNoise - 0.5) * 0.08;
+    float ice = (1.0 - smoothstep(reach - 0.02, reach + 0.02, depth)) * inMap;
+    // Witte, besneeuwde plekken en donkere barsten (waar twee aderpatronen kruisen) op blauwig ijs
+    float crack = texture2D(uDetail, vWPos.xz * 0.9).b;
+    vec3 iceCol = mix(vec3(0.70, 0.80, 0.86), vec3(0.90, 0.93, 0.95), smoothstep(0.4, 0.7, iceNoise));
+    iceCol *= 1.0 - 0.18 * smoothstep(0.47, 0.5, crack) * smoothstep(0.53, 0.5, crack);
+    diffuseColor.rgb = mix(diffuseColor.rgb, iceCol, ice);
+    diffuseColor.a = mix(diffuseColor.a, 1.0, ice);
+  }
 `;
 
 // Zachte overgang van 0 naar 1 tussen a en b (zoals smoothstep in een shader)

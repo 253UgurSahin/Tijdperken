@@ -3,6 +3,30 @@
 Alle wijzigingen uit de "wereldwijde hit"-ronde (analyse → bugfixes → techniek → gameplay → polish), in gewone
 taal. Per bug: wat er misging, hoe het is opgelost en hoe dat is gecontroleerd. Nieuwste bovenaan.
 
+## Versie 0.7.0 (november 2026)
+
+Vooral mooiere graphics, plus een strakkere HUD en een eerlijker begin.
+
+- **Echte winter en zachte seizoenen:** in de winter ligt er sneeuw op daken, akkers, bomen, rotsen en velden,
+  ondiep water en meren vriezen dicht, en wegen en de rand van je land blijven goed te zien. De seizoenen gaan
+  's nachts geleidelijk in elkaar over; in de lente bloeien bomen roze, in de herfst ligt er gevallen blad.
+- **Zon en maan:** de zon draait mee met de klok, met gouden avonden en blauwe nachten met maanlicht. Bij regen
+  is het licht zacht en bewolkt.
+- **De stad 's avonds:** ramen gaan huis voor huis aan en na middernacht weer per raam uit; lantaarns gaan één
+  voor één aan. Elk huis heeft een eigen tint voor dak en muur.
+- **Rook, vuur en weer:** zachte, belichte rook (alleen uit echte schoorstenen van werkende gebouwen), levende
+  kampvuren met vonken, en regen en sneeuw die je echt ziet vallen.
+- **Natuur en water:** de wildernis ziet eruit als stille natuur, het water heeft een dun schuimlijntje langs de
+  oever en lichtspel in ondiep water, regen maakt kringen, en er vliegen echte vogels.
+- **Bouwplaatsen:** steigers en bouwmateriaal in de stijl van het tijdperk (en veel lichter voor de computer).
+- **Camera en titelscherm:** bij inzoomen kantelt de camera naar de horizon, met nevel in de verte. Het
+  titelscherm toont je dorp in een langzaam draaiend shot; 'Verder spelen' glijdt terug naar waar je was.
+- **HUD:** geen papierresten meer, de bouwkaart toont twee volle rijen, de minikaart is vierkant en klopt, en
+  getallen staan er op zijn Nederlands.
+- **Eerlijk begin:** de coach stuurt je niet meer vast, uitbreiden kost nooit staal, en een kampioen valt pas aan
+  na een rustige nacht, met een waarschuwing vooraf.
+- **Kleine reparatie:** een onschuldige browsermelding (ResizeObserver) geeft geen foutmelding in het spel meer.
+
 ## Versie 0.6.0 (november 2026)
 
 - **Strak ontwerp:** de hele interface in één ontwerpsysteem, passend bij het nieuwe hoofdmenu. Donkere, licht

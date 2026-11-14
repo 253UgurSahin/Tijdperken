@@ -6,16 +6,11 @@ import { lights } from '../game/caches';
 import { G } from '../game/state';
 import { chargeFrac } from '../data/finale';
 import { isCharging } from '../game/finale';
-import { season } from '../game/time';
 import { FAR_DIST, camDist, isFar } from './camera';
 import { GLOWS, glow } from './decals';
 import { lampSwitchAt, nightWarmup, setCityNight, setLitLamps } from './kit';
-import { FOL } from './nodes';
 import { CAM3, PL, R3, S3, SUN_DIR, cam, hemi, sun } from './scene';
-import { TMAT } from './terrain';
-import { SNOW_COVER } from './terrainlook';
 import { setBloomDarkness, setGradeTime } from './post';
-import { setScatterSeason } from './scatter';
 import { dist } from '../util/math';
 import { sunDirAt } from '../util/sunpath';
 
@@ -119,34 +114,6 @@ function updateOvercast(dt: number) {
 const MOON_DIR = new T3.Vector3(0.62, 0.72, -0.3).normalize();
 const sunNow = new T3.Vector3();
 let lastTM = 0;
-const AUT: Record<string, string> = { oak: '#c9772f', birch: '#d9a83a' },
-  SUMMER: Record<string, string> = {
-    oak: '#4f8a3c',
-    birch: '#8fbf5a',
-    pine: '#3f6b3f',
-    pine2: '#4a7a45',
-    bush: '#4d7d38',
-  },
-  WINTER: Record<string, string> = {
-    oak: '#8a8f86',
-    birch: '#b5b9ad',
-    pine: '#4d6a5a',
-    pine2: '#5b7868',
-    bush: '#6b7a62',
-  };
-export function applySeason() {
-  const sn = season().n;
-  // Sneeuw op de grond: langzaam erbij in de winter, langzaam weg in de lente
-  SNOW_COVER.value += ((sn === 'Winter' ? 1 : 0) - SNOW_COVER.value) * 0.004;
-  if (sn === store.seasonSig) return;
-  store.seasonSig = sn;
-  setScatterSeason(sn);
-  for (const k in SUMMER)
-    FOL[k].color.set(sn === 'Herfst' && AUT[k] ? AUT[k] : sn === 'Winter' ? WINTER[k] : SUMMER[k]);
-  TMAT.color.set(
-    sn === 'Winter' ? '#e4ecf0' : sn === 'Herfst' ? '#f2e6cc' : sn === 'Zomer' ? '#fff6dc' : '#ffffff',
-  );
-}
 // Tijdens de finale kleurt de lucht paars, sterker naarmate de sterrenpoort voller is.
 // Bij het begin en bij het opengaan is er even een felle lichtflits (store.finaleFlash).
 const VIOLET = new T3.Color('#a98bff'),

@@ -28,7 +28,6 @@ export interface Store {
   tyaw: number | null;
   nodeSnap: Uint8Array | null;
   nodeAge: number;
-  seasonSig: string;
   uiDirty: boolean;
   tab: string;
   curAge: number;
@@ -74,7 +73,6 @@ export const store: Store = {
   tyaw: null,
   nodeSnap: null,
   nodeAge: -1,
-  seasonSig: '',
   uiDirty: true,
   tab: 'home',
   curAge: -1,

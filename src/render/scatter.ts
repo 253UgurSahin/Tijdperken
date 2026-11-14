@@ -167,16 +167,6 @@ export function setScatterLook(tint: T3.Color, strawAmount: number, flowers: num
   flowersOn = flowers > 0;
   placed.r = -1; // opnieuw neerzetten, met de nieuwe kleuren en het nieuwe aantal bloemen
 }
-// Oude manier, alleen nog voor applySeason in lighting.ts (die verdwijnt bij het samenvoegen: dan dit ook)
-const OLD_TINT: Record<string, string> = { Zomer: '#f4f0d8', Herfst: '#e8cf8a' };
-export function setScatterSeason(name: string) {
-  setScatterLook(
-    new T3.Color(OLD_TINT[name] || '#ffffff'),
-    name === 'Winter' ? 1 : 0,
-    name === 'Winter' ? 0 : 1,
-  );
-}
-
 const placed = { x: 0, y: 0, r: -1, version: -1, age: -1 };
 const _m = new T3.Matrix4(),
   _q = new T3.Quaternion(),
