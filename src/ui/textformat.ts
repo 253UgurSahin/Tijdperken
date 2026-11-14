@@ -63,9 +63,12 @@ export const SHAPE: Record<string, string> = {
 export const gem = (k: string): string =>
   `<i class="gem" style="--c:${RES[k].c};--clip:${SHAPE[k] || 'none'}"></i>`;
 
+/** Een onzichtbaar 'zacht' afbreekstreepje: de browser toont het alleen als het woord echt moet breken. */
+export const SOFT_HYPHEN = '\u00ad';
+
 /** Zet een zacht afbreekstreepje voor het laatste deel van een lange naam (Steen-groeve, Mijn-schacht). */
 export const hy = (s: string): string =>
   String(s).replace(
     /^(.{4,}?)(woning|menten|lantaarn|fabriek|batterij|centrum|gieterij|centrale|afweer|plaats|toren|koepel|schutter|drager|drone|hangar|punt|werker|pand|soldaat|werper|molen|poort|smidse|reactor|werf|fort|wagen|vechter|wapen|seum|station|werken|groeve|schacht|fontein|tuin|derij)$/i,
-    '$1­$2',
+    `$1${SOFT_HYPHEN}$2`,
   );

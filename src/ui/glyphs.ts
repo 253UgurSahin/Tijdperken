@@ -171,7 +171,7 @@ const PATHS: Record<string, string> = {
   '☀': '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/>',
   '❧': '<path d="M5 19C5 10 10 5 19.5 4.5 19 14 14 19 5 19z"/><path d="M5 19l9-9"/>',
   // een lantaarn met een vlammetje: de categorie Licht (anders dan het tandwiel en de zon)
-  '🏮': '<path d="M12 2.5v2"/><path d="M8 7.5l1.6-3h4.8l1.6 3z"/><path d="M8.6 7.5h6.8l-.8 9.5H9.4z"/><path d="M7.5 19.5h9M9.4 17v2.5M14.6 17v2.5"/><path d="M12 10c1.3 1.5 1.7 2.4 1.7 3.2a1.7 1.7 0 0 1-3.4 0c0-.8.4-1.7 1.7-3.2z" fill="currentColor"/>',
+  '🏮': '<path d="M12 2.5v2"/><path d="M8 7.5l1.6-3h4.8l1.6 3z"/><path d="M7 7.5h10l-1 10H8z"/><path d="M9.5 19.5h5"/><path d="M12 9.5c1.8 2 2.4 3.1 2.4 4.2a2.4 2.4 0 0 1-4.8 0c0-1.1.6-2.2 2.4-4.2z" fill="currentColor"/>',
 };
 
 // Geeft een SVG-pictogram terug voor een bekend teken, of het teken zelf als we het niet kennen.

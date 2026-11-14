@@ -55,6 +55,9 @@ export function updateHover() {
       tip.innerHTML = text;
       tip.hidden = false;
       tipSize = tip.getBoundingClientRect();
+      // De wereldtip moet na het bouwen altijd opnieuw schrijven en meten.
+      lastTipText = '';
+      lastTipNode = null;
     }
     const r = tipSize;
     tip.style.left = clamp(mouse.sx + 18, 8, VW - r.width - 8) + 'px';

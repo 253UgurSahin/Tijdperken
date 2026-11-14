@@ -2,22 +2,22 @@
 import { describe, expect, it } from 'vitest';
 import { B } from '../src/data/buildings';
 import { RES } from '../src/data/resources';
-import { SHAPE, fmt, fmtShort, hy } from '../src/ui/textformat';
+import { SHAPE, SOFT_HYPHEN, fmt, fmtShort, hy } from '../src/ui/textformat';
 
 describe('hy: lange namen', () => {
   it('geeft elk woord van 11 letters of meer een afbreekstreepje', () => {
     const missing: string[] = [];
     for (const k in B) {
       for (const word of B[k].n.split(/[ -]/)) {
-        if (word.length >= 11 && !hy(word).includes('­')) missing.push(word);
+        if (word.length >= 11 && !hy(word).includes(SOFT_HYPHEN)) missing.push(word);
       }
     }
     expect(missing).toEqual([]);
   });
   it('breekt op de goede plek', () => {
-    expect(hy('Steengroeve')).toBe('Steen­groeve');
-    expect(hy('Mijnschacht')).toBe('Mijn­schacht');
-    expect(hy('Raffinaderij')).toBe('Raffina­derij');
+    expect(hy('Steengroeve')).toBe(`Steen${SOFT_HYPHEN}groeve`);
+    expect(hy('Mijnschacht')).toBe(`Mijn${SOFT_HYPHEN}schacht`);
+    expect(hy('Raffinaderij')).toBe(`Raffina${SOFT_HYPHEN}derij`);
   });
 });
 
