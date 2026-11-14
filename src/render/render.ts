@@ -18,7 +18,8 @@ import { stepParticles } from './particles';
 import { drawAmbient } from './ambient';
 import { drawPlacement } from './ghost';
 import { flagpole } from './kit';
-import { applySeason, lighting } from './lighting';
+import { lighting } from './lighting';
+import { applySeason } from './seasons';
 import { drawOverlay } from './overlay';
 
 import { bRec, cRec, checkWorld, eRec, syncBuildings, syncCamps, syncEntities } from './sync';
