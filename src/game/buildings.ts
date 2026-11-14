@@ -17,6 +17,9 @@ import { bRate, lvlOf, towerDamage, towerRange } from './upgrades';
 export { towerDamage };
 import { amt, node } from '../world/world';
 
+/** Na elke ronde staat b.act van een fabriek hierop; daarna telt hij af (de tekening leest dit ook, voor de rook). */
+export const CONV_ACT = 1.2;
+
 export function bUpdate(b: Building, dt: number): void {
   if (b.flash) b.flash -= dt; // de treffer-flits loopt af (zie hit in military.ts)
   if (!b.done) return;
@@ -34,7 +37,7 @@ export function bUpdate(b: Building, dt: number): void {
         pay(d.conv.in);
         gain(d.conv.out);
         b.ct = 0;
-        b.act = 1.2;
+        b.act = CONV_ACT;
         b.starved = false;
       } else {
         b.ct = d.conv.t;

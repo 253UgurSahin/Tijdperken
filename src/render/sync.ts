@@ -40,6 +40,7 @@ import { groundChanged, shadeAll, shadeChanged } from './terrainlook';
 import { miniChanged } from './minimap';
 import { landSig, rivalColour } from '../game/rivals';
 import { darkness } from '../game/time';
+import { CONV_ACT } from '../game/buildings';
 import { hash2 } from '../util/random';
 
 /** Wat er per gebouw in de 3D-wereld bewaard wordt: houder (g), model (m), hoogte en bewegende delen. */
@@ -198,7 +199,12 @@ export function scaffold(g: T3.Object3D, s: number, h: number, age: number, seed
     t = age >= 5 ? 0.04 : 0.045, // stalen buizen zijn net wat dunner dan houten palen
     e = s * 0.5,
     // Op welke voorhoek het bouwmateriaal ligt (links of rechts, vast per gebouw)
-    side = hash2(seed, 5, 11) < 0.5 ? -1 : 1;
+    side = hash2(seed, 5, 11) < 0.5 ? -1 : 1,
+    // Hoe groot die stapel is en hoeveel loopplank erboven wegblijft
+    pileSize = s <= 1 ? 1.4 : Math.min(1.6, 1.2 + s * 0.15),
+    [reachX, reachZ] = pileReach(age, pileSize),
+    rim = 0.03,
+    pileGap = 2 * (reachX + rim);
   for (const [x, z] of [
     [-1, -1],
     [1, -1],
@@ -212,7 +218,7 @@ export function scaffold(g: T3.Object3D, s: number, h: number, age: number, seed
     bx(parts, s, 0.035, 0.035, pole, 0, y, e);
     bx(parts, 0.035, 0.035, s, pole, e, y, 0);
     // Loopplank op de voorkant; boven de hoek met bouwmateriaal blijft hij weg, zodat je de stapel ziet
-    bx(parts, s * 0.98 - 0.3, 0.02, 0.12, plank, -side * 0.15, y + 0.03, e + 0.07);
+    bx(parts, s * 0.98 - pileGap, 0.02, 0.12, plank, (-side * pileGap) / 2, y + 0.03, e + 0.07);
   }
   const brace = bx(parts, 0.03, Math.hypot(e, h) * 0.95, 0.03, pole, -e * 0.5, 0, e);
   brace.rotation.z = -Math.atan2(e, h);
@@ -224,14 +230,19 @@ export function scaffold(g: T3.Object3D, s: number, h: number, age: number, seed
   }
   // De vloer van de bouwplaats (aangestampt zand)
   mk(quadG, mat(SITE_FLOOR), parts, 0, 0.02, 0, s * 0.98, 1, s * 0.98);
-  // Een stapel bouwmateriaal op de linker- of rechtervoorhoek, net vóór de steiger zodat je hem ziet
-  // (en niet in de muren van het gebouw dat erin groeit); op een kleine bouwplaats wat groter
-  const pileSize = s <= 1 ? 1.6 : Math.min(1.7, 1.2 + s * 0.15);
-  materialPile(parts, age, side * (e - 0.22), e + 0.06, side, pileSize);
+  // Een stapel bouwmateriaal op de linker- of rechtervoorhoek, binnen de bouwplaats: de buitenkant ligt net
+  // binnen de rand, zodat hij niet in het gebouw of de opslag van de buren steekt
+  materialPile(parts, age, side * (e - rim - reachX), e - rim - reachZ, side, pileSize);
   // (mergeWhole geeft alleen null bij minder dan twee delen; hier zijn het er altijd tientallen)
   const site: T3.Object3D = mergeWhole(parts) || parts;
   g.add(site);
   return site;
+}
+/** Hoe ver de stapel bouwmateriaal vanaf zijn midden reikt, opzij (x) en naar voren en achteren (z). */
+function pileReach(age: number, k: number): [number, number] {
+  if (age <= 1) return [0.15 * k, 0.07 * k];
+  if (age <= 4) return [0.13 * k + 0.01, 0.04 + 0.05 * k];
+  return [0.15 * k, 0.1 * k];
 }
 /**
  * Bouwmateriaal dat bij het tijdperk past: boomstammen in de oertijd en de bronstijd, steenblokken en planken
@@ -299,9 +310,10 @@ const STACK_SMOKE: Record<
  * (twee rondes) blijft de rookkolom daardoor heel tijdens het werk, en stopt hij als de fabriek stilvalt.
  */
 function isWorking(b: Building, d: BuildingDef) {
-  if (d.gen) return b.run;
+  // (b.run wordt alleen in de speltik bijgewerkt: ook als het spel stilstaat moet uitzetten de rook stoppen)
+  if (d.gen) return b.on !== false && b.run;
   if (!d.conv) return false;
-  return b.on !== false && !b.plenty && !b.starved && !b.saving && b.act > 1.2 - d.conv.t * 2;
+  return b.on !== false && !b.plenty && !b.starved && !b.saving && b.act > CONV_ACT - d.conv.t * 2;
 }
 // Rook uit schoorstenen: een huis geeft altijd een dun pluimpje, een werkplaats (zoals de kruitmolen) alleen
 // zolang hij werkt; fabrieken roken uit hun echte schoorstenen, ook alleen zolang ze werken
@@ -377,9 +389,9 @@ export function fireSpots(root: T3.Object3D): FireSpot[] {
 }
 // Per beeldje: hoeveel deeltjes alle vuren samen nog mogen loslaten, hoe donker het is en hoe ver je kijkt
 const FIRE_CAP = 40;
-// De gloed rond een vuur 's avonds staat uit: de gloedlaag tekent nu nog harde zeshoekjes, en dan lijkt de
-// gloed op een selectieteken. Aanzetten zodra de gloedlaag zachte, ronde vlekjes tekent.
-const FIRE_HALO = false;
+// Hoe fel de gloed rond een vuur 's nachts is. Stel bij als de gloedlaag verandert (zachtere vlekjes met een
+// randversterking hebben minder nodig, zo'n 0,12 tot 0,15).
+const HALO_ALPHA = 0.16;
 const fireView = { budget: FIRE_CAP, dark: 0, near: true, range: 10 };
 function startFireFrame() {
   fireView.budget = FIRE_CAP;
@@ -428,25 +440,27 @@ export function fireFx(f: FireSpot, id: number) {
       emit(LAYER.soft, f.x, f.y + 0.3 * s, f.z, 0.06, 0.3, -0.03, 2.4, 0.06 * s, 0.32 * s, 0x6a625a, 0.3);
     }
   }
-  // Gloed in het donker: korte, elkaar overlappende vlekjes rond de vlam
-  if (FIRE_HALO && fireView.dark > 0.2) {
+  // Gloed in het donker: korte, elkaar overlappende vlekjes rond de vlam. Elk vlekje is iets anders van maat
+  // en plek, zodat de randen door elkaar lopen en de gloed geen scherpe vorm krijgt.
+  if (fireView.dark > 0.2) {
     f.halo = Math.max(-0.2, f.halo - dt);
     if (f.halo <= 0 && fireView.budget > 0) {
       f.halo += 0.2;
       fireView.budget--;
+      const haloSize = (0.27 + Math.random() * 0.14) * s;
       emit(
         LAYER.glow,
-        f.x,
+        f.x + (Math.random() - 0.5) * 0.08 * s,
         f.y + 0.12 * s,
-        f.z,
+        f.z + (Math.random() - 0.5) * 0.08 * s,
         0,
         0,
         0,
         0.45,
-        0.35 * s,
-        0.35 * s,
+        haloSize,
+        haloSize,
         0xff7a30, // warm oranje: geler wordt op gras al snel groenig
-        0.2 * fireView.dark,
+        HALO_ALPHA * fireView.dark,
       );
     }
   }
