@@ -224,8 +224,10 @@ export function scaffold(g: T3.Object3D, s: number, h: number, age: number, seed
   }
   // De vloer van de bouwplaats (aangestampt zand)
   mk(quadG, mat(SITE_FLOOR), parts, 0, 0.02, 0, s * 0.98, 1, s * 0.98);
-  // Een stapel bouwmateriaal op de linker- of rechtervoorhoek
-  materialPile(parts, age, side * (e - 0.21), e - 0.13, side, Math.min(1.5, 1.1 + s * 0.15));
+  // Een stapel bouwmateriaal op de linker- of rechtervoorhoek, net vóór de steiger zodat je hem ziet
+  // (en niet in de muren van het gebouw dat erin groeit); op een kleine bouwplaats wat groter
+  const pileSize = s <= 1 ? 1.6 : Math.min(1.7, 1.2 + s * 0.15);
+  materialPile(parts, age, side * (e - 0.22), e + 0.06, side, pileSize);
   // (mergeWhole geeft alleen null bij minder dan twee delen; hier zijn het er altijd tientallen)
   const site: T3.Object3D = mergeWhole(parts) || parts;
   g.add(site);
@@ -292,15 +294,26 @@ const STACK_SMOKE: Record<
   // Stof: laag en beige, waait opzij
   dust: { up: 0.14, life: 1.8, s0: 0.1, s1: 0.5, col: 0xc9b48a, a: 0.4, spread: 0.4 },
 };
-// Rook uit schoorstenen: huizen geven altijd een dun pluimpje; fabrieken roken uit hun echte schoorstenen,
-// maar alleen zolang ze werken
+/**
+ * Of een werkplaats nu aan het werk is. Een fabriek zet b.act maar één keer per ronde; met een ruime marge
+ * (twee rondes) blijft de rookkolom daardoor heel tijdens het werk, en stopt hij als de fabriek stilvalt.
+ */
+function isWorking(b: Building, d: BuildingDef) {
+  if (d.gen) return b.run;
+  if (!d.conv) return false;
+  return b.on !== false && !b.plenty && !b.starved && !b.saving && b.act > 1.2 - d.conv.t * 2;
+}
+// Rook uit schoorstenen: een huis geeft altijd een dun pluimpje, een werkplaats (zoals de kruitmolen) alleen
+// zolang hij werkt; fabrieken roken uit hun echte schoorstenen, ook alleen zolang ze werken
 function chimneySmoke(r: BuildingRec, b: Building, d: BuildingDef, dt: number) {
   if (!r.chims.length || !b.done) return;
   if (Math.abs(r.g.position.x - cam.x) + Math.abs(r.g.position.z - cam.y) > camDist() * 1.6) return;
-  const working = !!(d.conv || d.gen) && b.act > 0;
+  const workplace = !!(d.conv || d.gen),
+    working = workplace && isWorking(b, d);
   r.smokeT = (r.smokeT || Math.random()) - dt * (working ? 2.6 : 1.6);
-  const house = r.smokeT <= 0;
-  if (house) r.smokeT += 1;
+  // (Een stilstaande werkplaats rookt niet uit zijn huisschoorsteen; het klokje loopt wel door)
+  const house = r.smokeT <= 0 && (working || !workplace);
+  if (r.smokeT <= 0) r.smokeT += 1;
   r.stackT = (r.stackT || Math.random()) - dt * 4;
   const factory = working && r.stackT <= 0;
   if (r.stackT <= 0) r.stackT += 1;
@@ -319,7 +332,8 @@ function chimneySmoke(r: BuildingRec, b: Building, d: BuildingDef, dt: number) {
           3.2,
           0.05,
           0.32,
-          0xdedad2,
+          // Een werkplaats die stookt geeft grijzere rook dan een huis
+          workplace ? 0xa8a29a : 0xdedad2,
           0.5,
         );
     } else if (factory) {
@@ -363,6 +377,9 @@ export function fireSpots(root: T3.Object3D): FireSpot[] {
 }
 // Per beeldje: hoeveel deeltjes alle vuren samen nog mogen loslaten, hoe donker het is en hoe ver je kijkt
 const FIRE_CAP = 40;
+// De gloed rond een vuur 's avonds staat uit: de gloedlaag tekent nu nog harde zeshoekjes, en dan lijkt de
+// gloed op een selectieteken. Aanzetten zodra de gloedlaag zachte, ronde vlekjes tekent.
+const FIRE_HALO = false;
 const fireView = { budget: FIRE_CAP, dark: 0, near: true, range: 10 };
 function startFireFrame() {
   fireView.budget = FIRE_CAP;
@@ -412,7 +429,7 @@ export function fireFx(f: FireSpot, id: number) {
     }
   }
   // Gloed in het donker: korte, elkaar overlappende vlekjes rond de vlam
-  if (fireView.dark > 0.2) {
+  if (FIRE_HALO && fireView.dark > 0.2) {
     f.halo = Math.max(-0.2, f.halo - dt);
     if (f.halo <= 0 && fireView.budget > 0) {
       f.halo += 0.2;
@@ -428,8 +445,8 @@ export function fireFx(f: FireSpot, id: number) {
         0.45,
         0.35 * s,
         0.35 * s,
-        0xff9a40,
-        0.25 * fireView.dark,
+        0xff7a30, // warm oranje: geler wordt op gras al snel groenig
+        0.2 * fireView.dark,
       );
     }
   }
@@ -583,7 +600,10 @@ export function syncBuildings() {
       m.traverse(o => {
         if (o.userData.chim) {
           o.getWorldPosition(tmpV);
-          chims.push([tmpV.x, tmpV.y, tmpV.z, o.userData.chim === 1 ? 'house' : o.userData.chim]);
+          // (userData is ongetypeerd: alleen de drie bekende fabrieksrooksoorten tellen, de rest is een huis)
+          const c: unknown = o.userData.chim;
+          const style: ChimStyle = c === 'coal' || c === 'steam' || c === 'dust' ? c : 'house';
+          chims.push([tmpV.x, tmpV.y, tmpV.z, style]);
         }
       });
       g.traverse(o => {
