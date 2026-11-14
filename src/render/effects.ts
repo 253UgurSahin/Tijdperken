@@ -165,9 +165,25 @@ function firstSight(e: Fx) {
     puff(LAYER.glow, 4, e.x2, 0.45, e.y2, 1.6, 1.4, 0.3, 0.03, 0.01, 0x7ff7ff, 1, -5);
   } else if (e.type === 'smoke') {
     // Rookwolkje uit de spelstand (sneuvelen, slopen): één zacht deeltje dat opstijgt en meewaait, net zoals
-    // de spelstand het laat bewegen (z en vz zijn in 32ste delen van een tegel)
-    const color = smokeColor.set(e.col || '#e9ebe4').getHex();
-    emit(LAYER.soft, e.x, 0.2 + e.z / 32, e.y, 0.12, e.vz / 32, -0.12, e.max, 0.12, 0.47, color, 0.5);
+    // de spelstand het laat bewegen (z en vz zijn in 32ste delen van een tegel). Deeltjes lopen in echte
+    // seconden en het spel in speltijd: op 2x of 4x leeft het wolkje daarom korter en stijgt het sneller, anders
+    // staan er bij een snel spel veel te veel tegelijk.
+    const color = smokeColor.set(e.col || '#e9ebe4').getHex(),
+      pace = Math.max(1, G.speed || 1);
+    emit(
+      LAYER.soft,
+      e.x,
+      0.2 + e.z / 32,
+      e.y,
+      0.12 * pace,
+      (e.vz / 32) * pace,
+      -0.12 * pace,
+      e.max / pace,
+      0.12,
+      0.47,
+      color,
+      0.5,
+    );
   }
 }
 
@@ -520,9 +536,15 @@ function updateWeather() {
   const d = camDist(),
     fx = cam.x - CAM3.position.x,
     fz = cam.y - CAM3.position.z,
-    fl = Math.hypot(fx, fz) || 1;
-  WEATHER.uFwd.value.set((fx / fl) * d * 0.45, (fz / fl) * d * 0.45);
-  WEATHER.uSide.value.set((-fz / fl) * d * 0.36 * CAM3.aspect, (fx / fl) * d * 0.36 * CAM3.aspect);
+    fl = Math.hypot(fx, fz);
+  if (fl < 0.5) {
+    // Recht van boven (2D-aanzicht) is er geen kijkrichting: dan een vast rechthoekig gebied zo groot als het beeld
+    WEATHER.uFwd.value.set(0, d * 0.42);
+    WEATHER.uSide.value.set(d * 0.42 * CAM3.aspect, 0);
+  } else {
+    WEATHER.uFwd.value.set((fx / fl) * d * 0.45, (fz / fl) * d * 0.45);
+    WEATHER.uSide.value.set((-fz / fl) * d * 0.36 * CAM3.aspect, (fx / fl) * d * 0.36 * CAM3.aspect);
+  }
   WEATHER.uCenter.value.set(cam.x, cam.y);
   WEATHER.uTop.value = CAM3.position.y * 0.5;
   WEATHER.uNear.value = d * 0.3;

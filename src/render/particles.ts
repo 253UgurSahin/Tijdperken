@@ -13,7 +13,7 @@ const MAX = 700;
  */
 export const SMOKE_LIGHT = { value: new T3.Color(1, 1, 1) };
 // Nooit donkerder dan maanlicht: met alleen zon en lucht verdween rook 's nachts helemaal tegen de donkere grond
-const MOONLIGHT = new T3.Color(0.3, 0.33, 0.42);
+const MOONLIGHT = new T3.Color(0.36, 0.4, 0.5);
 const sunShare = new T3.Color();
 /** SMOKE_LIGHT bijwerken. Vlak voor het tekenen: dan heeft lighting() zon en lucht voor dit beeldje al gezet. */
 export function updateSmokeLight(): void {
@@ -74,12 +74,12 @@ function fadeMaterial(additive: boolean) {
             `float r = length( vQuad ) * 2.0;
             vec4 diffuseColor = vec4( diffuse, opacity * vInstAlpha * 1.8 * pow( max( 0.0, 1.0 - r ), 1.6 ) );`
           : // Rook: een zachte ronde vlek, linksboven iets lichter (alsof de zon erop schijnt), maal het licht van
-            // nu. Een zachte rand laat minder zien dan een volle bol; 1.4 maakt dat goed, zodat alle emit()-
-            // aanroepen hun oude sterkte houden. Nooit boven 1, anders geeft het mengen vreemde randen.
+            // nu. Een zachte rand laat minder zien dan een volle bol; 1.8 maakt dat goed, zodat alle emit()-
+            // aanroepen ongeveer hun oude sterkte houden. Nooit boven 1, anders geeft het mengen vreemde randen.
             `float r2 = dot( vQuad, vQuad ) * 4.0;
             float soft = pow( max( 0.0, 1.0 - r2 ), 1.5 );
             float shade = 0.88 + 0.4 * dot( vQuad, vec2( -0.45, 0.55 ) );
-            vec4 diffuseColor = vec4( diffuse * uLight * shade, min( 1.0, opacity * vInstAlpha * 1.4 * soft ) );`,
+            vec4 diffuseColor = vec4( diffuse * uLight * shade, min( 1.0, opacity * vInstAlpha * 1.8 * soft ) );`,
       );
   };
   // Beide lagen hebben dezelfde onBeforeCompile-tekst, en three.js kiest het programma op die tekst: zonder een
