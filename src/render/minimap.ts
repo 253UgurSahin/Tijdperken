@@ -174,7 +174,11 @@ export function renderMini() {
   } else if (todo.x1 >= todo.x0) paintMiniBase(todo.x0, todo.y0, todo.x1, todo.y1);
   todo.x1 = -1; // weer leeg
   mctx.setTransform(1, 0, 0, 1, 0, 0);
-  mctx.clearRect(0, 0, MW, MH);
+  // De hele minikaart eerst in de kleur van de kaartrand (meestal zee): dan zie je rond een gedraaide kaart
+  // geen naad tussen de kaart en de achtergrond.
+  const edge = mimg.data;
+  mctx.fillStyle = `rgb(${edge[0]}, ${edge[1]}, ${edge[2]})`;
+  mctx.fillRect(0, 0, MW, MH);
   mctx.setTransform(...miniXf());
   mctx.imageSmoothingEnabled = false;
   mctx.drawImage(mbuf, 0, 0);

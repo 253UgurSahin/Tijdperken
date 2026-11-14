@@ -41,8 +41,8 @@ export const SHAPE: Record<string, string> = {
   bronze: 'polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)',
   iron: 'polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%)',
   gold: 'polygon(50% 0,62% 35%,100% 36%,69% 58%,80% 95%,50% 73%,20% 95%,31% 58%,0 36%,38% 35%)',
-  // buskruit: een rond vaatje
-  powder: 'ellipse(40% 50%)',
+  // buskruit: een vaatje (zeshoek), zodat het niet op het ronde voedselbolletje lijkt
+  powder: 'polygon(20% 0,80% 0,95% 50%,80% 100%,20% 100%,5% 50%)',
   coal: 'polygon(22% 0,100% 22%,78% 100%,0 78%)',
   steel: 'polygon(0 22%,100% 22%,100% 78%,0 78%)',
   oil: 'polygon(50% 0,86% 55%,78% 88%,50% 100%,22% 88%,14% 55%)',

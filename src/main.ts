@@ -253,9 +253,9 @@ function tick(now: number) {
   updateHover();
   uiT -= rdt;
   if (uiT <= 0 || store.uiDirty) {
+    if (uiT <= 0) mouse.moved = true; // de wereld onder de muis verandert ook stil: uitleg bijwerken (op de klok)
     uiT = 0.25;
     store.uiDirty = false;
-    mouse.moved = true; // de wereld onder de muis verandert ook zonder bewegen: uitleg bij de muis bijwerken
     if (store.curAge !== G.age) onAgeChange();
     updateHeader();
     updateWorldTop();

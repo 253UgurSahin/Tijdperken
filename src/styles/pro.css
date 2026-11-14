@@ -476,6 +476,16 @@ kbd,
     white-space: nowrap;
   }
 }
+/* Kleinere laptop: het kaartpaneel iets breder dan de 196 px van responsive.css, zodat de kaart vierkant blijft
+   (geen randen boven en onder). Het selectiepaneel in het midden geeft die ruimte af. */
+@media (min-width: 901px) and (max-width: 1240px) and (min-height: 561px) {
+  #mapPanel {
+    width: 222px;
+  }
+  #mapPanel .mapbtns {
+    flex-basis: 26px;
+  }
+}
 /* Op een heel breed scherm is er weer plek voor het woord "Uitbreiden" naast de kaart */
 @media (min-width: 2300px) and (min-height: 561px) {
   #mapPanel {
