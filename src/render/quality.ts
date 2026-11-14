@@ -153,7 +153,7 @@ function apply(name: string, later?: boolean) {
   PL.forEach((p, i) => (p.visible = i < L.lamps));
   // Een ander aantal lampen geeft andere nachtshaders: die maken we nu klaar, anders hapert de eerste
   // schemering. (Bij het opstarten doet main.ts dat na het eerste beeldje.)
-  if (lampCount >= 0 && L.lamps !== lampCount && L.lamps > 0) precompileNightShaders();
+  if (lampCount >= 0 && L.lamps !== lampCount) precompileNightShaders();
   lampCount = L.lamps;
   if (later) requestResize();
   else resize();
