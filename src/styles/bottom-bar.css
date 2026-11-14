@@ -896,7 +896,8 @@ body.v2 #bigMap #mapBig {
   }
 }
 #cmdgrid {
-  /* Alle tegels even hoog, zodat twee rijen precies in de onderbalk passen */
+  /* Alle tegels even hoog. Op de computer rekent pro.css de hoogte uit de balkhoogte, zodat er precies
+     twee rijen in passen; dit is de hoogte voor de andere schermen. */
   --tile-h: 76px;
   display: grid;
   grid-template-columns: repeat(5, 1fr);

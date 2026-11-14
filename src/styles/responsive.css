@@ -463,8 +463,9 @@
     min-width: 0;
     margin-right: 0;
   }
+  /* De volgende stap neemt niet meer plek dan zijn tekst nodig heeft */
   #objectives {
-    flex: 1 1 200px;
+    flex: 0 1 auto;
   }
   .speed button {
     min-width: 28px;
@@ -588,6 +589,29 @@
   }
   #title .tw {
     gap: 10px;
+  }
+  /* Niets geselecteerd: de knoppen Dorp, Leger, ... staan linksonder in de hoek, naast het bouwpaneel,
+     in plaats van erboven. Panelen en het doel beginnen dan net boven die knoppen en zijn veel hoger. */
+  body:not(.insp) #sidebtns {
+    top: auto;
+    right: auto;
+    bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    flex-wrap: nowrap;
+  }
+  body:not(.insp) #cmdPanel {
+    max-width: min(560px, 100% - 300px);
+  }
+  body:not(.insp) #panel {
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - 62px - env(safe-area-inset-bottom, 0px));
+  }
+  /* Een open paneel of het doel ligt over het bouwpaneel heen: dat mag dan even weg */
+  body.panelopen:not(.insp) #cmdPanel,
+  body.showgoal:not(.insp) #cmdPanel {
+    visibility: hidden;
+  }
+  body.showgoal:not(.insp) #objectives {
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
   }
 }
 @media (prefers-reduced-motion: reduce) {

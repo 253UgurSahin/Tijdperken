@@ -33,8 +33,8 @@ const PATHS: Record<string, string> = {
   '◎': '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
   // iemand ergens heen sturen
   '➜': '<path d="M4 12h15M13 6l6 6-6 6"/>',
-  // gebied uitbreiden: vier hoekjes
-  '⬚': '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>',
+  // gebied uitbreiden: vier hoekjes met een plusje (anders lijkt het op de knop voor de grote kaart)
+  '⬚': '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><path d="M12 8.5v7M8.5 12h7"/>',
   // olie
   '⛽': '<path d="M12 3c4 5 6 8.2 6 11a6 6 0 0 1-12 0c0-2.8 2-6 6-11z"/>',
   // een poppetje: inwoners en dorpelingen
@@ -170,6 +170,8 @@ const PATHS: Record<string, string> = {
   // seizoenen (de lente is het kiemplantje ⚘, de winter de sneeuwvlok ❄): zon en een blad
   '☀': '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/>',
   '❧': '<path d="M5 19C5 10 10 5 19.5 4.5 19 14 14 19 5 19z"/><path d="M5 19l9-9"/>',
+  // een lantaarn met een vlammetje: de categorie Licht (anders dan het tandwiel en de zon)
+  '🏮': '<path d="M12 2.5v2"/><path d="M8 7.5l1.6-3h4.8l1.6 3z"/><path d="M7 7.5h10l-1 10H8z"/><path d="M9.5 19.5h5"/><path d="M12 9.5c1.8 2 2.4 3.1 2.4 4.2a2.4 2.4 0 0 1-4.8 0c0-1.1.6-2.2 2.4-4.2z" fill="currentColor"/>',
 };
 
 // Geeft een SVG-pictogram terug voor een bekend teken, of het teken zelf als we het niet kennen.

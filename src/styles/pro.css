@@ -309,3 +309,198 @@ kbd,
   border-top-color: var(--acc);
   background: linear-gradient(180deg, rgba(48, 44, 38, 0.96), rgba(30, 28, 24, 0.96));
 }
+
+/* ======== Afwerking: de laatste resten van het papieren ontwerp weg ========
+   Deze regels staan na alles en zijn minstens zo specifiek als de oude, zodat ze altijd winnen. */
+
+/* Kleur voor "hier is iets nieuws" (stipjes en het stickertje): één warm goud. Rood blijft voor alarm. */
+:root {
+  --badge: #f2c14e;
+  --on-badge: #2a2110;
+}
+
+/* Aanwijzen van een tabje of snelheidsknop: een zachte gloed, geen half-wit blok */
+.cats button:hover:not(:disabled):not(.on),
+.speed button:hover:not(:disabled):not(.on) {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--ink);
+}
+/* Een grondstof aanwijzen: net zichtbaar oplichten */
+#resbar .res:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Een tegel die nu niet kan (zoals Trainen als de huizen vol zijn): donker en rustig, niet crème */
+.cb:disabled,
+.gb:disabled {
+  background: rgba(255, 255, 255, 0.025);
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.cb:disabled img,
+.cb:disabled .g {
+  opacity: 0.45;
+}
+
+/* Scheidingslijnen: doorgetrokken in plaats van gestippeld. Alleen de kant met een lijn krijgt een stijl;
+   met de korte schrijfwijze zouden er ook lijnen verschijnen aan de kanten die nu breedte nul hebben. */
+.poprow {
+  border-right-style: solid;
+}
+#ageplate .age {
+  border-left-style: solid;
+  border-right-style: solid;
+}
+#mission,
+#hovertip .key {
+  border-top-style: solid;
+}
+#panel .ph,
+#resPop .res,
+.log .e {
+  border-bottom-style: solid;
+}
+.qnext {
+  border-left-style: solid;
+}
+#resMore,
+#event .ic {
+  border-style: solid;
+}
+/* Gestippeld blijft alleen waar het "nog niet" betekent: .gb.locked, .reqs .ck en #ageBtn:disabled */
+
+/* Niets meer scheef: de stempel van het tijdperk, het pictogram van een gebeurtenis en het stickertje.
+   (De banner beweegt in zijn animatie met transform; rotate staat daar los van.) */
+#ageplate .age b {
+  rotate: none;
+  outline: none;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.18);
+}
+#event .ic,
+#banner .in {
+  rotate: none;
+}
+.gb .nw {
+  rotate: none;
+  background: var(--badge);
+  color: var(--on-badge);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+/* De stipjes "hier is iets nieuws" in dezelfde gouden kleur */
+#sidebtns button.hint i,
+.cats button.hint:not(.on)::after {
+  background: var(--badge);
+}
+
+/* Meldingen, de uitleg bij de muis en de kaartjes bovenin: dezelfde ronding en schaduw als de panelen */
+.tst,
+#hovertip,
+#banner .in,
+.achpop,
+#event,
+#offer {
+  border-radius: var(--r);
+  box-shadow: var(--card-shadow);
+}
+
+/* Grondstof-fiches: een licht randje rond de kleur, zodat ook donkere (buskruit, kolen, olie) goed
+   zichtbaar zijn op het donkere paneel. Het binnenste vlak heeft dezelfde vorm, net iets kleiner. */
+.gem {
+  position: relative;
+  background: color-mix(in srgb, var(--c) 35%, #ece6da);
+}
+.gem::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  clip-path: inherit;
+  background: var(--c);
+}
+
+/* ---- Onderbalk op de computer: twee volle rijen bouwtegels en een vierkante minikaart ---- */
+@media (min-width: 901px) and (min-height: 561px) {
+  .cats {
+    padding: 2px;
+    margin-bottom: 4px;
+  }
+  /* Twee rijen precies in de balk: de balk min randen, tabjes, marges en de ruimte tussen de rijen */
+  #cmdgrid {
+    --tile-h: calc((var(--barh) - 68px) / 2);
+    padding: 6px 2px 2px 6px; /* boven 6 px: het stickertje "nieuw" valt er niet af */
+  }
+  .gb,
+  .cb {
+    padding: 3px 2px;
+  }
+  .gb img,
+  .cb img,
+  .cb .g {
+    width: 28px;
+    height: 28px;
+  }
+
+  /* De kaart links (vierkant, zo hoog als het paneel) en de knoppen in een smalle kolom ernaast */
+  #mapPanel {
+    flex-direction: row;
+  }
+  #mapPanel #miniBox {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  #mapPanel #mini {
+    background: radial-gradient(#2f5873, #1d3a50);
+  }
+  #mapPanel .mapbtns {
+    flex: 0 0 30px;
+    flex-direction: column;
+    margin-top: 0;
+  }
+  #mapPanel .mapbtns button {
+    min-height: 0;
+    min-width: 0;
+    padding: 0;
+  }
+  #mapPanel #expandBtn {
+    flex: 1;
+  }
+  /* Smal: alleen het pictogram. Het woord blijft wel voorgelezen (onzichtbaar, maar niet weg). */
+  #mapPanel #expandBtn .ico {
+    display: block;
+  }
+  #mapPanel #expandBtn span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+/* Kleinere laptop: het kaartpaneel iets breder dan de 196 px van responsive.css, zodat de kaart vierkant blijft
+   (geen randen boven en onder). Het selectiepaneel in het midden geeft die ruimte af. */
+@media (min-width: 901px) and (max-width: 1240px) and (min-height: 561px) {
+  #mapPanel {
+    width: 222px;
+  }
+  #mapPanel .mapbtns {
+    flex-basis: 26px;
+  }
+}
+/* Op een heel breed scherm is er weer plek voor het woord "Uitbreiden" naast de kaart */
+@media (min-width: 2300px) and (min-height: 561px) {
+  #mapPanel {
+    width: 300px;
+  }
+  #mapPanel .mapbtns {
+    flex-basis: 96px;
+  }
+  #mapPanel #expandBtn .ico {
+    display: none;
+  }
+  #mapPanel #expandBtn span {
+    position: static;
+    width: auto;
+    height: auto;
+    clip-path: none;
+  }
+}

@@ -174,7 +174,11 @@ export function renderMini() {
   } else if (todo.x1 >= todo.x0) paintMiniBase(todo.x0, todo.y0, todo.x1, todo.y1);
   todo.x1 = -1; // weer leeg
   mctx.setTransform(1, 0, 0, 1, 0, 0);
-  mctx.clearRect(0, 0, MW, MH);
+  // De hele minikaart eerst in de kleur van de kaartrand (meestal zee): dan zie je rond een gedraaide kaart
+  // geen naad tussen de kaart en de achtergrond.
+  const edge = mimg.data;
+  mctx.fillStyle = `rgb(${edge[0]}, ${edge[1]}, ${edge[2]})`;
+  mctx.fillRect(0, 0, MW, MH);
   mctx.setTransform(...miniXf());
   mctx.imageSmoothingEnabled = false;
   mctx.drawImage(mbuf, 0, 0);
@@ -237,9 +241,14 @@ export function renderMini() {
   }
 }
 function miniTo(e: PointerEvent) {
+  // Het canvas staat met object-fit: contain in zijn vak: de kaart is een vierkant in het midden, met
+  // eromheen lege randen. Reken daarom vanaf dat getekende vierkant, niet vanaf het hele vak.
   const r = mini.getBoundingClientRect(),
-    X = ((e.clientX - r.left) / r.width) * MW,
-    Y = ((e.clientY - r.top) / r.height) * MH;
+    side = Math.min(r.width, r.height) || 1,
+    left = r.left + (r.width - side) / 2,
+    top = r.top + (r.height - side) / 2,
+    X = ((e.clientX - left) / side) * MW,
+    Y = ((e.clientY - top) / side) * MH;
   // Terugrekenen: eerst het midden eraf, dan de draaiing en de schaal van miniXf ongedaan maken
   const [c, s, , , ox, oy] = miniXf(),
     k2 = c * c + s * s,

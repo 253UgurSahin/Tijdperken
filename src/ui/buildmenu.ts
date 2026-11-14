@@ -112,7 +112,7 @@ const CATKEY: Record<string, string> = { home: 'Z', eco: 'X', light: 'C', mil: '
 const CAT_ICON: Record<string, string> = {
   home: '⌂',
   eco: '⚙',
-  light: '✹',
+  light: '🏮',
   mil: '⚔',
   deco: '⚘',
   wonder: '★',
