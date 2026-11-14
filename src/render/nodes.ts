@@ -65,15 +65,18 @@ interface LeafLook {
   blossom?: { value: number };
   /** Sneeuw vanaf hoe vlak (0 = rechtop, 1 = vlak) tot helemaal; naaldbomen hebben steile kegels, dus lager. */
   snow?: [number, number];
+  /** Loofboom: in de winter kaal, met donkere takjes door de kruin (naaldbomen niet). */
+  twigs?: boolean;
 }
 function foliage(color: string, look: LeafLook = {}): T3.MeshStandardMaterial {
-  const { low = 0.25, high = 1.1, blossom = { value: 0 }, snow = [0.6, 0.85] } = look;
+  const { low = 0.25, high = 1.1, blossom = { value: 0 }, snow = [0.6, 0.85], twigs = false } = look;
   const m = new T3.MeshStandardMaterial({ color, flatShading: true, roughness: 0.88 });
   m.onBeforeCompile = shader => {
     shader.uniforms.uWind = WIND;
     shader.uniforms.uShadeRange = { value: new T3.Vector2(low, high) };
     shader.uniforms.uBlossom = blossom;
     shader.uniforms.uSnowMask = { value: new T3.Vector2(snow[0], snow[1]) };
+    shader.uniforms.uTwigs = { value: twigs ? 1 : 0 };
     shader.vertexShader =
       'uniform float uWind;\nvarying float vLeafY;\nvarying float vPick;\n' +
       shader.vertexShader.replace(
@@ -92,15 +95,31 @@ function foliage(color: string, look: LeafLook = {}): T3.MeshStandardMaterial {
         transformed.z += sway * position.y * 0.6;`,
       );
     shader.fragmentShader =
-      'uniform vec2 uShadeRange;\nuniform vec2 uSnowMask;\nuniform float uBlossom;\nvarying float vLeafY;\nvarying float vPick;\n' +
+      'uniform vec2 uShadeRange;\nuniform vec2 uSnowMask;\nuniform float uBlossom;\nuniform float uTwigs;\n' +
+      'varying float vLeafY;\nvarying float vPick;\n' +
       shader.fragmentShader
         .replace(
           '#include <color_fragment>',
           `#include <color_fragment>
-        diffuseColor.rgb *= mix(0.66, 1.08, smoothstep(uShadeRange.x, uShadeRange.y, vLeafY));`,
+        diffuseColor.rgb *= mix(0.66, 1.08, smoothstep(uShadeRange.x, uShadeRange.y, vLeafY));
+        // Winter: een kale kruin is geen dicht blok maar een wirwar van takken. Donkere streepjes door de kruin
+        // (een golfpatroon over de plek in de wereld) laten hem open ogen, en niet als een steen met sneeuw erop.
+        // (uSnowCover komt van addSnow hieronder: zo groeit het mee met de sneeuw, zonder eigen seizoenswaarde.)
+        #ifdef USE_FOG
+          if (uTwigs * uSnowCover > 0.001) {
+            vec3 twigPos = (vec4(-vViewPosition - viewMatrix[3].xyz, 0.0) * viewMatrix).xyz;
+            float twigA = dot(twigPos, vec3(1.0, 0.7, 0.3)) * 9.0 + sin(twigPos.y * 7.0 + twigPos.z * 5.0) * 1.4;
+            float twigB = dot(twigPos, vec3(-0.4, 0.8, 0.9)) * 8.0 + sin(twigPos.x * 6.0 - twigPos.y * 4.0) * 1.4;
+            float twigGap = min(abs(fract(twigA) - 0.5), abs(fract(twigB) - 0.5));
+            // Niet overal even dicht: hier en daar breekt een takje af
+            float twig = (1.0 - smoothstep(0.04, 0.1, twigGap)) * smoothstep(-0.7, 0.1, sin(twigPos.x * 13.0 + twigPos.z * 11.0 + twigPos.y * 7.0));
+            diffuseColor.rgb *= 1.0 - uTwigs * uSnowCover * 0.45 * twig;
+          }
+        #endif`,
         )
-        // Bloesem: bij ongeveer een derde van de bomen krijgt de bovenkant plekken roze-wit, in trossen (een
-        // golfpatroon over de plek in de wereld). In de wildernis (donkerder getekend) wat donkerder.
+        // Bloesem: bij ongeveer een derde van de bomen krijgt de bovenkant een roze waas met losse toefjes erin
+        // (stippen in een raster over de plek in de wereld; de lichtste toefjes wit). Van ver zie je zo een roze
+        // kruin, van dichtbij losse bloesems. In de wildernis (donkerder getekend) wat donkerder.
         // (Na normal_fragment_maps: daar is bekend welke kant een vlakje op kijkt.)
         .replace(
           '#include <normal_fragment_maps>',
@@ -108,9 +127,15 @@ function foliage(color: string, look: LeafLook = {}): T3.MeshStandardMaterial {
         if (uBlossom > 0.001) {
           float bloomUp = inverseTransformDirection(normal, viewMatrix).y;
           vec3 bloomPos = (vec4(-vViewPosition - viewMatrix[3].xyz, 0.0) * viewMatrix).xyz;
-          float bloomPatch = sin(bloomPos.x * 21.0 + sin(bloomPos.z * 16.0)) * sin(bloomPos.z * 19.0 + bloomPos.y * 13.0);
-          float bloom = uBlossom * step(vPick, 0.34) * smoothstep(0.3, 0.65, bloomUp) * smoothstep(-0.45, -0.05, bloomPatch);
-          vec3 bloomCol = mix(vec3(0.98, 0.82, 0.88), vec3(0.94, 0.6, 0.74), smoothstep(0.1, 0.7, bloomPatch));
+          vec3 bloomCell = floor(bloomPos * 11.0);
+          float bloomRnd = fract(sin(dot(bloomCell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+          // Elk vakje een toefje van een eigen grootte (of geen), op een roze waas
+          float bloomSize = 0.14 + 0.26 * fract(bloomRnd * 7.31);
+          float bloomDist = length(fract(bloomPos * 11.0) - 0.5);
+          float bloomDot = step(0.3, bloomRnd) * (1.0 - smoothstep(bloomSize - 0.08, bloomSize, bloomDist));
+          float bloom = uBlossom * step(vPick, 0.34) * smoothstep(0.3, 0.65, bloomUp) * (0.75 + 0.25 * bloomDot);
+          vec3 bloomCol = mix(vec3(0.9, 0.5, 0.68), vec3(0.99, 0.76, 0.87), bloomDot);
+          bloomCol = mix(bloomCol, vec3(1.0, 0.94, 0.96), bloomDot * smoothstep(0.85, 0.95, bloomRnd));
           #if defined( USE_COLOR )
             bloomCol *= clamp(dot(vColor.rgb, vec3(0.3, 0.59, 0.11)) * 1.08, 0.6, 1.0);
           #endif
@@ -127,9 +152,9 @@ function foliage(color: string, look: LeafLook = {}): T3.MeshStandardMaterial {
 export const FOL: Record<string, T3.MeshStandardMaterial> = {
   pine: foliage('#3f6b3f', { snow: [0.32, 0.62] }),
   pine2: foliage('#4a7a45', { snow: [0.32, 0.62] }),
-  birch: foliage('#8fbf5a', { low: 0.5, high: 1.3, blossom: BLOSSOM, snow: [0.5, 0.8] }),
-  oak: foliage('#4f8a3c', { low: 0.35, high: 1.15, blossom: BLOSSOM, snow: [0.5, 0.8] }),
-  bush: foliage('#4d7d38', { low: 0.0, high: 0.32, snow: [0.5, 0.8] }),
+  birch: foliage('#8fbf5a', { low: 0.5, high: 1.3, blossom: BLOSSOM, snow: [0.6, 0.85], twigs: true }),
+  oak: foliage('#4f8a3c', { low: 0.35, high: 1.15, blossom: BLOSSOM, snow: [0.6, 0.85], twigs: true }),
+  bush: foliage('#4d7d38', { low: 0.0, high: 0.32, snow: [0.55, 0.85], twigs: true }),
 };
 // Stenen (rotsen, steenkool, de voet van ertsen en de losse rotsen op de bergen) krijgen in de winter sneeuw op de
 // bovenkant. Elk een eigen kopie van het materiaal: het gedeelde materiaal uit mat() gebruiken ook gebouwen en

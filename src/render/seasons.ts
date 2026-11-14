@@ -29,7 +29,7 @@ const GREEN = { oak: '#4f8a3c', birch: '#8fbf5a', pine: '#3f6b3f', pine2: '#4a7a
 // Lente, zomer, herfst en winter (in de volgorde van seasonIndex)
 const SPRING = 0;
 const LOOKS: SeasonLook[] = [
-  { leaves: GREEN, ground: '#ffffff', grass: '#ffffff', straw: 0, flowers: 1.8, snow: 0, litter: 0 },
+  { leaves: GREEN, ground: '#ffffff', grass: '#ffffff', straw: 0, flowers: 2.5, snow: 0, litter: 0 },
   { leaves: GREEN, ground: '#fff6dc', grass: '#f4f0d8', straw: 0, flowers: 1, snow: 0, litter: 0 },
   {
     leaves: { ...GREEN, oak: '#c9772f', birch: '#d9a83a' },
@@ -42,7 +42,7 @@ const LOOKS: SeasonLook[] = [
   },
   // Winter: kale eiken, berken en struiken (de kleur van hout, met sneeuw erop) en donkere naaldbomen
   {
-    leaves: { oak: '#6b5d52', birch: '#8c8277', pine: '#4d6a5a', pine2: '#5b7868', bush: '#55604d' },
+    leaves: { oak: '#8a8079', birch: '#b3aca4', pine: '#4d6a5a', pine2: '#5b7868', bush: '#7a7468' },
     ground: '#e4ecf0',
     grass: '#ffffff',
     straw: 1,
@@ -93,7 +93,6 @@ export function applySeason(): void {
     lerp(a.straw, b.straw, t),
     (t > 0.5 ? b : a).flowers,
   );
-  BLOSSOM.value = blossomAt(now, next, t);
   // Sneeuw valt in de nacht en ligt er helemaal als het licht wordt (daarom loopt hij voor op t); bij dooi
   // smelten de laatste plekjes pas in de eerste ochtend van de lente
   const snowWant = lerp(a.snow, b.snow, b.snow > a.snow ? Math.min(1, t * 1.25) : t),
@@ -109,10 +108,17 @@ export function applySeason(): void {
   if (jump) {
     SNOW_COVER.value = snowWant;
     LEAF_LITTER.value = litterWant;
+    setBlossom(now, next, t);
     return;
   }
   // (1 - e^(-dt/tijd): even snel bij 30 en bij 120 beeldjes per seconde)
   const k = 1 - Math.exp((-dt * Math.max(1, G.speed)) / EASE_TIME);
   SNOW_COVER.value += (snowWant - SNOW_COVER.value) * k;
   LEAF_LITTER.value += (litterWant - LEAF_LITTER.value) * k;
+  setBlossom(now, next, t);
+}
+
+/** Bloesem, maar niet op bomen die nog onder de sneeuw zitten (in de laatste winternacht smelt die eerst). */
+function setBlossom(now: number, next: number, t: number): void {
+  BLOSSOM.value = blossomAt(now, next, t) * (1 - SNOW_COVER.value);
 }

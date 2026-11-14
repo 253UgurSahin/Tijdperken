@@ -257,22 +257,31 @@ const GROUND_COLOR = `
   if (uSnowCover > 0.001) {
     float cover = smoothstep(0.5 - uSnowCover * 0.3, 0.56 - uSnowCover * 0.3, macro * 0.6 + dA.g * 0.4)
       * uSnowCover * smoothstep(0.55, 0.8, vWNrm.y) * smoothstep(-0.12, -0.03, vWPos.y);
-    // Op wegen, zand en de randen van gebieden blijft weinig liggen, zodat je ze blijft zien (en ze zijn wat
-    // donkerder: nat en platgelopen). Herkend aan de kleur: warm en roodachtig (aarde, zand, de gouden rand),
-    // grijs maar niet groenig (klinkers, asfalt) of fel (de rand van een rivaal, in zijn kleur). Alleen laag bij
-    // de grond: op de bergen (ook grijs) blijft de sneeuw gewoon liggen. (De kleur zonder het seizoensfilter
-    // van het materiaal: dat maakt in de winter alles wat blauwgroener.)
+    // Op wegen en de randen van gebieden blijft weinig liggen, zodat je ze blijft zien (en ze zijn wat donkerder:
+    // nat en platgelopen). Herkend aan de kleur van de grond zonder het seizoensfilter van het materiaal (dat maakt
+    // in de winter alles blauwgroener). Elke soort weg heeft een eigen kenmerk, zodat zand en kale plekken in de
+    // wildernis (grauw en donker getekend) niet voor een weg worden aangezien en gewoon wit worden.
     vec3 paint = base / max(diffuse, vec3(0.05));
     float spread = max(paint.r, max(paint.g, paint.b)) - min(paint.r, min(paint.g, paint.b));
-    float dirtW = smoothstep(0.02, 0.06, paint.r - paint.g) * smoothstep(0.04, 0.1, paint.r - paint.b);
-    float greyW = (1.0 - smoothstep(0.06, 0.1, spread)) * (1.0 - smoothstep(0.0, 0.02, paint.g - max(paint.r, paint.b)));
-    float paintW = smoothstep(0.3, 0.4, spread);
-    float bare = max(max(dirtW, greyW), paintW) * (1.0 - smoothstep(0.1, 0.3, vWPos.y));
-    col *= 1.0 - 0.15 * bare * uSnowCover;
-    cover *= 1.0 - 0.85 * bare;
+    float paintLum = dot(paint, vec3(0.3, 0.59, 0.11));
+    float warm = smoothstep(0.02, 0.06, paint.r - paint.g) * smoothstep(0.04, 0.1, paint.r - paint.b);
+    float grey = (1.0 - smoothstep(0.06, 0.1, spread)) * (1.0 - smoothstep(0.0, 0.02, paint.g - max(paint.r, paint.b)));
+    // De gouden rand: warm en lichter dan elk zand
+    float goldW = warm * smoothstep(0.79, 0.82, paintLum);
+    // Klinkers: licht grijs met een warme ondertoon; asfalt: donkergrijs met een blauwe ondertoon
+    float cobbleW = grey * smoothstep(0.45, 0.55, paintLum) * (1.0 - smoothstep(-0.03, -0.01, paint.b - paint.r));
+    float asphaltW = grey * smoothstep(0.025, 0.035, paint.b - paint.r) * (1.0 - smoothstep(0.38, 0.45, paintLum));
+    // De rand van een rivaal: fel, in zijn eigen kleur (zand is minder fel, of als het even fel is lichter)
+    float rivalW = max(smoothstep(0.48, 0.54, spread), smoothstep(0.36, 0.42, spread) * (1.0 - smoothstep(0.6, 0.68, paintLum)));
+    // Aarde: niet te onderscheiden van licht zand op je eigen land, dus allebei maar half: wat vlekkerige sneeuw
+    float dirtW = warm * smoothstep(0.5, 0.56, paintLum);
+    // Alleen laag bij de grond: op de bergen (ook grijs) blijft de sneeuw gewoon liggen
+    float bare = max(max(goldW, rivalW), max(cobbleW, asphaltW)) * 0.85;
+    bare = max(bare, dirtW * 0.5) * (1.0 - smoothstep(0.1, 0.3, vWPos.y));
+    col *= 1.0 - 0.18 * bare * uSnowCover;
+    cover *= 1.0 - bare;
     // Sneeuw is grijzer in de wildernis, zodat je eigen land lichter blijft. De wildernis is grauw en donker
     // getekend (weinig kleur en niet licht); op je eigen land is alleen de donkere bosgrond een tikje grijzer.
-    float paintLum = dot(paint, vec3(0.3, 0.59, 0.11));
     float wild = (1.0 - smoothstep(0.08, 0.13, spread)) * (1.0 - smoothstep(0.35, 0.5, paintLum));
     vec3 snowCol = vec3(0.86, 0.9, 0.97) * mix(clamp(0.6 + paintLum * 1.2, 0.85, 1.0), 0.72, wild)
       * (0.93 + (dA.g * 0.6 + dB.g * 0.4) * 0.07 + macro * 0.06);

@@ -96,7 +96,7 @@ function swaying(m: T3.MeshLambertMaterial): T3.MeshLambertMaterial {
         '#include <begin_vertex>',
         `#include <begin_vertex>
         vec3 ip = vec3(instanceMatrix[3][0], 0.0, instanceMatrix[3][2]);
-        float sink = 1.0 - uSnow * 0.75;
+        float sink = 1.0 - uSnow * 0.8;
         transformed.y *= sink;
         float sway = (sin(uWind * 2.1 + ip.x * 0.9 + ip.z * 1.1) * 0.25 + sin(uWind * 4.3 + ip.x * 2.3) * 0.08) * ${WIND_GUST};
         transformed.x += sway * position.y * sink;
@@ -152,7 +152,7 @@ export function setScatterDensity(d: number) {
 let flowersOn = true,
   flowerAmount = 1,
   straw = 0;
-const STRAW = new T3.Color(0.62, 0.55, 0.36);
+const STRAW = new T3.Color(0.55, 0.5, 0.38);
 /**
  * Zet het seizoen van het strooisel. `tint` kleurt het gras (gratis, elk beeldje), `strawAmount` (0..1) maakt de
  * plukjes strogeel en `flowers` is hoeveel bloemetjes er staan (1 = gewoon, 0 = geen). Die twee zitten in de kleur
@@ -232,6 +232,8 @@ export function updateScatter() {
       for (const kind of ['tuft', 'flower', 'pebble']) {
         let want = per[kind] * thin * busy;
         if (kind === 'tuft' && t === TER.ROCK) want *= 0.3;
+        // In de winter ligt de helft onder de sneeuw: dan steken er maar een paar sprieten uit
+        if (kind === 'tuft') want *= 1 - 0.5 * straw;
         if (kind === 'flower') want *= flowerAmount;
         let k = 0;
         for (; want > 0; want--, k++) {
@@ -250,14 +252,14 @@ export function updateScatter() {
           // Kleur: gras en steentjes nemen de kleur van de grond eronder over, bloemen hebben eigen kleuren
           const g = i * 3;
           if (kind === 'flower') _c.copy(FLOWER_COLORS[(h1 * FLOWER_COLORS.length) | 0]);
-          else if (kind === 'tuft')
+          else if (kind === 'tuft') {
             _c.setRGB((ground[g] / 255) * 1.1, (ground[g + 1] / 255) * 1.12, (ground[g + 2] / 255) * 0.95);
-          else {
+            // Winter: dof strogele plukjes (elk net iets anders), die hier en daar uit de sneeuw steken
+            if (straw) _c.lerp(_straw.copy(STRAW).multiplyScalar(0.9 + h2 * 0.2), straw);
+          } else {
             const grey = 0.55 + h2 * 0.35;
             _c.setRGB(grey * 1.02, grey * 0.98, grey * 0.92);
           }
-          // Winter: strogele plukjes (elk net iets anders), die uit de sneeuw steken
-          if (kind === 'tuft' && straw) _c.lerp(_straw.copy(STRAW).multiplyScalar(0.85 + h2 * 0.3), straw);
           if (locked) _c.multiplyScalar(0.55);
           m.setColorAt(n[kind], _c);
           n[kind]++;
