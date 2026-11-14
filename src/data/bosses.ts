@@ -47,6 +47,13 @@ export const BOSS_FIRST_DAY = 4;
 export const BOSS_GRACE_DAYS = 2;
 
 /**
+ * Welke dag telt als de dag van het nieuwe tijdperk. Na 21 uur (en voor 6 uur, als de dag nog niet verder telt)
+ * is de aanval van die dag al begonnen: die nacht was dan geen rustnacht, dus telt de volgende dag.
+ */
+export const bossStartDay = (day: number, clock: number): number =>
+  clock >= 21 || clock < 6 ? day + 1 : day;
+
+/**
  * Komt de kampioen mee met de aanval van dag `raidDay`? Niet op de oefennacht, niet voor dag 4, en niet
  * vlak na het nieuwe tijdperk. Bij day 0 (een oude opslag of de testhulp) telt alleen de oefennacht.
  */

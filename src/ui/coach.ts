@@ -3,6 +3,7 @@ import type { AgeUpDef, CoachAct, Foe } from '../types';
 import { AGE_UP } from '../data/ages';
 import { B, BKEYS } from '../data/buildings';
 import { GATHER, MARKET_RES, RES } from '../data/resources';
+import { marketFixFor } from '../data/economy';
 import { CN } from '../config';
 import { avail } from '../game/caches';
 import { has, missingResources, waitReason } from '../game/economy';
@@ -102,22 +103,22 @@ export function chunkShortStep(want: string): CoachStep | null {
   const short = Object.keys(cost).filter(k => G.res[k] < cost[k]);
   const why = `Uitbreiden (voor ${want}) kost ${costText(cost)}.`;
   const market = G.bs.find(b => b.type === 'market' && b.done);
-  if (market) {
+  // Alleen een handel die nu echt lukt: genoeg goud om te kopen, of genoeg over om te verkopen
+  const fix = market && marketFixFor(G.res, cost, MARKET_RES, r => marketPrices(market, r).buy);
+  if (market && fix) {
     const toMarket: CoachAct = { l: 'Naar de markt', k: 'sel', id: market.id };
-    // Goud koop je niet: dat krijg je door iets te verkopen, en voedsel raakt nooit op
-    if (short.includes('gold'))
+    const name = RES[fix.r].n.toLowerCase();
+    if (fix.kind === 'sell')
       return {
-        t: 'Verkoop voedsel op de markt voor goud.',
-        h: `${why} Je mist nog ${fmt(Math.ceil(cost.gold - G.res.gold))} goud.`,
+        t: `Verkoop ${name} voor goud.`,
+        h: `${why} Je mist nog ${fmt(Math.ceil(cost.gold - G.res.gold))} goud. Op de markt verkoop je ${name} voor goud.`,
         act: toMarket,
       };
-    const buy = short.find(k => MARKET_RES.includes(k));
-    if (buy)
-      return {
-        t: `Koop ${RES[buy].n.toLowerCase()} op de markt.`,
-        h: `${why} Je mist nog ${fmt(Math.ceil(cost[buy] - G.res[buy]))} ${RES[buy].n.toLowerCase()}.`,
-        act: toMarket,
-      };
+    return {
+      t: `Koop ${name} op de markt.`,
+      h: `${why} Je mist nog ${fmt(Math.ceil(cost[fix.r] - G.res[fix.r]))} ${name}.`,
+      act: toMarket,
+    };
   }
   const backup = backupSourceStep(short);
   if (backup) return backup;
@@ -268,7 +269,9 @@ function finaleRaidStep(raid: number, boss: Foe | null): CoachStep {
 function speedUpTip(want: string[]): { text: string; act: CoachAct } | null {
   // Met een markt en genoeg goud koop je wat je mist meteen
   const market = G.bs.find(b => b.type === 'market' && b.done);
-  const buy = market && want.find(r => MARKET_RES.includes(r) && G.res.gold >= marketPrices(market, r).buy);
+  // (alleen met goud dat het volgende tijdperk zelf niet nodig heeft: anders schiet je er niets mee op)
+  const freeGold = G.res.gold - (AGE_UP[G.age + 1]?.cost.gold ?? 0);
+  const buy = market && want.find(r => MARKET_RES.includes(r) && freeGold >= marketPrices(market, r).buy);
   if (market && buy)
     return {
       text: `Of koop ${RES[buy].n.toLowerCase()} op de markt.`,
@@ -299,6 +302,12 @@ function speedUpTip(want: string[]): { text: string; act: CoachAct } | null {
     const where = far === 'wood' ? 'de bomen' : `het ${RES[far].n.toLowerCase()}`;
     return { text: `Een extra opslagplaats bij ${where} scheelt lopen.`, act: bAct('storage') };
   }
+  // Niets te doen dan wachten tot je dorpelingen genoeg verzameld hebben? Dan gaat het sneller op 2×
+  if (G.speed > 0 && G.speed < 2)
+    return {
+      text: 'Op 2× snelheid duurt het wachten maar half zo lang.',
+      act: { l: 'Sneller (2×)', k: 'speed' },
+    };
   return null;
 }
 
@@ -347,14 +356,14 @@ function nextStep(): CoachStep {
     };
   const marching = G.foes.filter(isMarching);
   if (marching.length) return marchStep(marching);
+  // Is het volgende tijdperk al binnen? Dan wint "Klaar voor ...": de kampioen en de lamp kunnen wachten
+  const ageReady = !!nx && lackList(nx).length === 0;
   // De kampioen komt vannacht: dat gaat voor de lamp en de rest
-  const champion = championStep();
+  const champion = ageReady ? null : championStep();
   if (champion) return champion;
   const lit = G.bs.some(b => b.type !== 'townhall' && B[b.type].light && !B[b.type].gen);
   const dark = G.vs.filter(v => v.state === 'sleep' || (v.state === 'walk' && v.on === 'sleep')).length;
   const lamp = BKEYS.find(k => B[k].cat === 'light' && B[k].light && !B[k].gen && canMake(k, G.age));
-  // Is het volgende tijdperk al binnen? Dan wint "Klaar voor ...": de lamp kan wachten
-  const ageReady = !!nx && lackList(nx).length === 0;
   if (isNight() && dark && !lit && lamp && !ageReady)
     return {
       t: `Het is donker: ${dark} ${dark === 1 ? 'dorpeling stopt' : 'dorpelingen stoppen'} met werken.`,
@@ -505,20 +514,25 @@ function raidPrepStep(): CoachStep | null {
   return null;
 }
 
-// Vandaag is een aanvalsdag, de kampioen komt mee en je verdediging is nog dun: waarschuw op tijd
+/** Vanaf dit uur waarschuwt de coach voor de kampioen van vannacht (de aanval komt om 21 uur). */
+const CHAMPION_WARN_HOUR = 12;
+
+// Vandaag is een aanvalsdag, de kampioen komt mee en je verdediging is nog dun: waarschuw 's middags,
+// en alleen met iets wat je nu kunt doen (anders gaat de coach gewoon verder; de melding om 18:30 waarschuwt ook)
 function championStep(): CoachStep | null {
-  if (G.peaceful || !raidNight() || G.clock < 6 || G.clock >= 21) return null;
+  if (G.peaceful || !raidNight() || G.clock < CHAMPION_WARN_HOUR || G.clock >= 21) return null;
   const boss = bossComesTonight();
   if (!boss) return null;
   const towers = G.bs.filter(b => b.done && b.type !== 'townhall' && B[b.type].def).length;
   // Dun: minder dan zes "punten" verdediging, waarbij een toren voor twee soldaten telt
   if (G.us.length + towers * 2 >= 6) return null;
   const tip = defenseTip();
+  if (!tip) return null;
   return {
     t: `Vannacht: ${boss.n}!`,
-    h: `${bossName(boss)} leidt de aanval, met ${BOSS_HP}× levens en ${BOSS_DMG}× schade. ${tip ? tip.text : 'Spaar voor soldaten of een toren.'}`,
-    tile: tip?.tile,
-    act: tip?.act ?? null,
+    h: `${bossName(boss)} leidt de aanval, met ${BOSS_HP}× levens en ${BOSS_DMG}× schade. ${tip.text}`,
+    tile: tip.tile,
+    act: tip.act,
     alarm: true,
   };
 }

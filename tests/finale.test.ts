@@ -11,6 +11,7 @@ import {
   bossForAge,
   bossName,
   bossReady,
+  bossStartDay,
   cleanPendingBoss,
 } from '../src/data/bosses';
 import {
@@ -81,6 +82,15 @@ describe('kampioenen: pas na een rustnacht', () => {
     expect(bossReady({ age: 4, day: 6 }, 6, false)).toBe(false);
     expect(bossReady({ age: 4, day: 6 }, 7, false)).toBe(false);
     expect(bossReady({ age: 4, day: 6 }, 8, false)).toBe(true);
+  });
+  it('een nieuw tijdperk tijdens de aanval van die nacht telt pas vanaf de volgende dag', () => {
+    expect(bossStartDay(4, 14)).toBe(4);
+    expect(bossStartDay(4, 22)).toBe(5);
+    expect(bossStartDay(4, 3)).toBe(5);
+    // Nieuw tijdperk op dag 4 om 22 uur (normaal: aanvallen op even dagen): dag 6 is de rustnacht, dag 8 komt hij
+    const pending = { age: 2, day: bossStartDay(4, 22) };
+    expect(bossReady(pending, 6, false)).toBe(false);
+    expect(bossReady(pending, 8, false)).toBe(true);
   });
   it('oude opslag (dag 0) is meteen klaar', () => {
     expect(bossReady({ age: 2, day: 0 }, 2, false)).toBe(true);

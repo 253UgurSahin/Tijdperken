@@ -804,7 +804,8 @@ export interface GameState {
 export interface CoachAct {
   l: string;
   b?: string;
-  k?: 'age' | 'alarm' | 'expand' | 'sel';
+  /** speed: de tijd op 2× zetten (als je alleen nog hoeft te wachten). */
+  k?: 'age' | 'alarm' | 'expand' | 'sel' | 'speed';
   id?: number;
   /** Bij uitbreiden: de grondstof die je zoekt. */
   r?: string;

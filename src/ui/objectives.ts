@@ -15,7 +15,7 @@ import { popNow } from '../game/entities';
 import { RIVAL, verb } from '../data/rivals';
 import { theWonder } from '../data/wonders';
 import { rbById } from '../game/rivals';
-import { G, bById, sel } from '../game/state';
+import { G, sel } from '../game/state';
 import { rivalWonderRaces, rivalWonderSavings } from '../game/wonders';
 import { clearSel } from '../input/selection';
 import { centerOn } from '../render/camera';
@@ -24,11 +24,10 @@ import { victoryGoals } from '../game/victory';
 import { measureHud } from '../main';
 import { ageUp } from './age';
 import { andJoin, chunkShortStep, placed } from './coach';
-import { setTab } from './buildmenu';
 import { esc, fmt, gem, theAge } from './format';
 import { ico } from './glyphs';
 import { setHTML, sigs } from './header';
-import { setExpand, toast } from './hud';
+import { runCoachAct, setExpand, toast } from './hud';
 import { togglePanel } from './panel';
 import { $, isCompact } from '../util/dom';
 
@@ -110,8 +109,9 @@ export function renderChronicle() {
       return `${shown}<button id="ageToggle" aria-expanded="${open}"><span class="mt">Laatste tijdperk</span>${chevron}</button>${races}<div class="body"><p class="why">${CHAPTERS[G.age].s}</p>${folded}</div>`;
     const name = theAge(G.age + 1); // "de bronstijd", "het dronetijdperk"
     let fixBtn = '';
+    // Eerst wat er moet gebeuren (en waarom, als je de muis erop houdt), met een korte knop als dat kan
     if (short)
-      fixBtn = `<button id="fixBtn" title="${esc(short.h)}" ${fixAct ? '' : 'disabled'}>${esc(fixAct ? short.t : 'Gebied uitbreiden')}</button>`;
+      fixBtn = `<p class="why" title="${esc(short.h)}">${esc(short.t)}</p>${fixAct ? `<button id="fixBtn" title="${esc(short.h)}">${esc(fixAct.l)}</button>` : ''}`;
     else if (req.fix)
       fixBtn = `<button id="fixBtn" title="Er ligt nog geen ${RES[req.fix].n.toLowerCase()} binnen je grenzen">Gebied uitbreiden</button>`;
     const ageBtn = req.allReq ? `<button class="primary" id="ageBtn">Ga naar ${name} →</button>` : '';
@@ -249,7 +249,7 @@ $('#mission').addEventListener('click', e => {
   if (t.id === 'ageBtn') ageUp();
   else if (t.id === 'fixBtn') {
     sfx('tick');
-    if (fixAct) runFixAct(fixAct);
+    if (fixAct) runCoachAct(fixAct);
     else setExpand(true);
     if (isCompact()) togglePanel();
   } else if (t.id === 'ageToggle') {
@@ -265,23 +265,5 @@ $('#mission').addEventListener('click', e => {
   }
 });
 
-// Wat de knop "Gebied uitbreiden" eerst laat doen als je het land nog niet kunt betalen (zie chunkShortStep)
+// Wat de knop op de doelenkaart eerst laat doen als je het land nog niet kunt betalen (zie chunkShortStep)
 let fixAct: CoachAct | null = null;
-function runFixAct(a: CoachAct): void {
-  if (a.b) {
-    // Een gebouw dat het tekort oplost (zoals een steengroeve): meteen gaan plaatsen
-    setTab(B[a.b].cat);
-    store.placing = a.b;
-    store.expandMode = false;
-    clearSel();
-    sigs.grid = null;
-  } else if (a.k === 'sel') {
-    const b = bById.get(a.id!);
-    if (b) {
-      clearSel();
-      sel.b = b.id;
-      centerOn(b.x + 1, b.y + 1);
-    }
-  }
-  store.uiDirty = true;
-}

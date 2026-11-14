@@ -85,3 +85,35 @@ export function chunkCostFor(age: number, bought: number, factor: number): Cost 
   for (const k in cost) cost[k] = Math.round(cost[k] * factor);
   return cost;
 }
+
+/** De markt koopt en verkoopt per zoveel stuks (zie de knoppen bij de markt in ui/inspector.ts). */
+export const MARKET_LOT = 100;
+
+/** Wat de markt kan doen tegen een tekort: iets verkopen voor goud, of iets kopen met goud. */
+export interface MarketFix {
+  kind: 'sell' | 'buy';
+  r: string;
+}
+
+/**
+ * Kan de markt een tekort voor `cost` oplossen, met de voorraad `res`? Mist er goud, dan verkoop je iets
+ * waar je na de verkoop nog genoeg van overhoudt voor `cost` zelf. Mist er iets anders, dan koop je het,
+ * maar alleen met goud dat `cost` zelf niet nodig heeft. `tradable`: wat de markt handelt (MARKET_RES),
+ * `buyPrice`: wat 100 stuks kosten. Geeft null als de markt nu niets kan doen.
+ */
+export function marketFixFor(
+  res: Record<string, number>,
+  cost: Cost,
+  tradable: string[],
+  buyPrice: (r: string) => number,
+): MarketFix | null {
+  const has = (r: string) => res[r] || 0;
+  const short = Object.keys(cost).filter(k => has(k) < cost[k]);
+  if (short.includes('gold')) {
+    const spare = tradable.find(r => has(r) - (cost[r] || 0) >= MARKET_LOT);
+    return spare ? { kind: 'sell', r: spare } : null;
+  }
+  const freeGold = has('gold') - (cost.gold || 0);
+  const buy = short.find(r => tradable.includes(r) && freeGold >= buyPrice(r));
+  return buy ? { kind: 'buy', r: buy } : null;
+}

@@ -3,7 +3,7 @@ import type { Foe } from '../types';
 import { store } from '../core/store';
 import { SET } from '../core/settings';
 import { sfx } from '../audio/sound';
-import { BOSS_DMG, BOSS_HP, bossForAge, bossName, bossReady } from '../data/bosses';
+import { BOSS_DMG, BOSS_HP, bossForAge, bossName, bossReady, bossStartDay } from '../data/bosses';
 import type { BossDef } from '../data/bosses';
 import { burst, floater, fxRing } from './fx';
 import { hasRule } from './mods';
@@ -25,7 +25,7 @@ export function bossAfterAgeUp(): void {
   const boss = bossForAge(G.age);
   // Zonder leger (spelregel van een uitdaging) zou hij niet te verslaan zijn
   if (!boss || G.peaceful || hasRule('noArmy')) return;
-  G.boss = { age: G.age, day: G.day };
+  G.boss = { age: G.age, day: bossStartDay(G.day, G.clock) };
   note(`Er gaan geruchten: ${bossName(boss)} leidt binnenkort een aanval.`, 'bad');
 }
 
