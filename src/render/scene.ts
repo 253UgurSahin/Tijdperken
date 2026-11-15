@@ -31,7 +31,10 @@ export const scrX = (x: number, y: number): number => screenRight(x, y);
 const LOWQ = matchMedia('(pointer:coarse)').matches;
 const HAS_WEBGL2 = (() => {
   try {
-    return !!document.createElement('canvas').getContext('webgl2');
+    const gl = document.createElement('canvas').getContext('webgl2');
+    // Meteen weer opruimen: anders houdt dit proefcanvas videogeheugen en een van de weinige WebGL-plekken vast
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    return !!gl;
   } catch {
     return false;
   }

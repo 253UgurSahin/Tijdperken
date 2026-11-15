@@ -111,22 +111,38 @@ const SCREEN_CORNERS: [number, number][] = [
 const FIT_POINTS: [number, number, number][] = Array.from({ length: 8 }, () => [0, 0, 0]);
 const FIT_SUN: [number, number, number] = [0, 1, 0];
 // Een halve tegel marge is genoeg: de zachte schaduwrand is maar een paar pixels van de kaart breed
-const FIT_OPTS: ShadowFitOptions = { minHalf: 6, maxHalf: 69, step: 2, margin: 0.5 };
+const FIT_FORWARD = new T3.Vector3();
+const FIT_FOCUS: [number, number, number] = [0, 0, 0];
+/** Zo ver buiten de kaart (in tegels) vallen nog schaduwen, op de zee langs de rand. */
+const MAP_EDGE = 2;
+const FIT_MAP: [number, number, number][] = Array.from({ length: 8 }, () => [0, 0, 0]);
+const FIT_BOX: ShadowBox = { cx: 0, cz: 0, halfW: 0, halfH: 0, depthBehind: 0, depthFront: 0 };
+const FIT_OPTS: ShadowFitOptions = {
+  minHalf: 6,
+  maxHalf: 69,
+  step: 2,
+  margin: 0.5,
+  focus: FIT_FOCUS,
+  bounds: FIT_MAP,
+};
 /**
  * Het vak om wat je nu ziet. reach: hoe ver het beeld reikt (tot de mist); ox, oz: de schok van het scherm, die we
  * eraf halen zodat een ontploffing het vak (en dus de schaduwen) niet laat trillen.
  */
 function fitShadowToView(reach: number, ox: number, oz: number): ShadowBox {
   let n = 0;
+  CAM3.getWorldDirection(FIT_FORWARD);
   for (const [sx, sy] of SCREEN_CORNERS) {
     FIT_NDC.set(sx, sy);
     FIT_RAY.setFromCamera(FIT_NDC, CAM3);
     const ray = FIT_RAY.ray;
+    const maxT = reach / Math.max(0.1, ray.direction.dot(FIT_FORWARD));
     for (const plane of FIT_PLANES) {
       // Een straal boven in beeld kan bij een lage kijkhoek ver achter de mist de grond raken (of nooit):
       // dan nemen we het punt waar de mist alles verbergt, anders wordt het vak veel te groot
+      // (De mist telt de diepte langs de kijkrichting, niet de afstand: in de schermhoeken reikt een straal dus verder.)
       const hit = ray.intersectPlane(plane, FIT_HIT);
-      if (!hit || hit.distanceTo(ray.origin) > reach) ray.at(reach, FIT_HIT);
+      if (!hit || hit.distanceTo(ray.origin) > maxT) ray.at(maxT, FIT_HIT);
       const p = FIT_POINTS[n++];
       p[0] = FIT_HIT.x - ox;
       p[1] = FIT_HIT.y;
@@ -139,7 +155,17 @@ function fitShadowToView(reach: number, ox: number, oz: number): ShadowBox {
   // Verder uitgezoomd dan vroeger kon, groeit het vak niet verder mee (net als vroeger het vierkant): zo blijft
   // de schaduw scherp en kost hij niet meer werk
   FIT_OPTS.maxHalf = FAR_DIST * 0.9 * Math.max(1, CAM3.aspect / 1.78);
-  return fitShadowBox(FIT_POINTS, FIT_SUN, FIT_OPTS);
+  // Past het beeld niet in dat grootste vak, dan houdt het midden van het scherm (waar de camera naar kijkt) schaduw
+  FIT_FOCUS[0] = cam.x;
+  FIT_FOCUS[2] = cam.y;
+  // De kaart kan van maat veranderen (een nieuw spel): de hoeken daarom elk beeldje opnieuw zetten
+  for (let i = 0; i < 8; i++) {
+    const p = FIT_MAP[i];
+    p[0] = i & 1 ? W + MAP_EDGE : -MAP_EDGE;
+    p[1] = i & 4 ? ROOF : 0;
+    p[2] = i & 2 ? H + MAP_EDGE : -MAP_EDGE;
+  }
+  return fitShadowBox(FIT_POINTS, FIT_SUN, FIT_OPTS, FIT_BOX);
 }
 
 /**

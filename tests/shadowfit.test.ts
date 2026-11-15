@@ -74,7 +74,7 @@ describe('passend schaduwvak', () => {
           spread = 2 + rnd() * 40;
         for (let i = 0; i < 8; i++) pts.push([ox + rnd() * spread, rnd() * 4, oz + rnd() * spread]);
         const box = fitShadowBox(pts, sun, OPTS);
-        const c: Vec3 = [box.cx, box.cy, box.cz];
+        const c: Vec3 = [box.cx, 0, box.cz];
         for (const p of pts) {
           const rel: Vec3 = [p[0] - c[0], p[1] - c[1], p[2] - c[2]];
           expect(Math.abs(dot(rel, right))).toBeLessThanOrEqual(box.halfW);
@@ -83,7 +83,6 @@ describe('passend schaduwvak', () => {
           expect(dot(rel, sun)).toBeLessThanOrEqual(box.depthBehind + 1e-9);
           expect(-dot(rel, sun)).toBeLessThanOrEqual(box.depthFront + 1e-9);
         }
-        expect(box.cy).toBe(0);
       }
     }
   });
@@ -131,5 +130,40 @@ describe('passend schaduwvak', () => {
     );
     expect(huge.halfW).toBe(OPTS.maxHalf);
     expect(huge.halfH).toBe(OPTS.maxHalf);
+  });
+  it('schuift ver uitgezoomd naar het midden van het scherm, als niet alles in het grootste vak past', () => {
+    const sun = sunDirAt(12);
+    // Zoom 0,12: veel meer dan het grootste vak (69) kan dekken
+    const pts = viewCorners(27 / 0.12, 0.9, Math.PI / 4, 1440 / 900, 128, 128);
+    const focus: Vec3 = [128, 0, 128];
+    const box = fitShadowBox(pts, sun, { ...OPTS, focus });
+    expect(box.halfW).toBe(OPTS.maxHalf);
+    const { right, up } = lightBasis(sun);
+    const rel: Vec3 = [focus[0] - box.cx, 0, focus[2] - box.cz];
+    // Het midden van het scherm ligt ruim binnen het vak (niet net op de rand)
+    expect(Math.abs(dot(rel, right))).toBeLessThan(box.halfW * 0.5);
+    expect(Math.abs(dot(rel, up))).toBeLessThan(box.halfH * 0.5);
+    // En past alles wel, dan verandert focus niets
+    const close = viewCorners(27 / 0.9, 0.9, Math.PI / 4, 1440 / 900);
+    expect(fitShadowBox(close, sun, { ...OPTS, focus: [50, 0, 50] })).toEqual(fitShadowBox(close, sun, OPTS));
+  });
+
+  it('wordt kleiner aan de rand van de kaart, en schrijft in out als je die meegeeft', () => {
+    const sun = sunDirAt(12);
+    // Kijk naar de hoek (0, 0) van een kaart van 100 bij 100
+    const pts = viewCorners(27 / 0.6, 0.9, Math.PI / 4, 1440 / 900, 0, 0);
+    const bounds: Vec3[] = [];
+    for (const x of [-2, 102]) for (const z of [-2, 102]) for (const y of [0, 4]) bounds.push([x, y, z]);
+    const free = fitShadowBox(pts, sun, OPTS);
+    const out = { cx: 0, cz: 0, halfW: 0, halfH: 0, depthBehind: 0, depthFront: 0 };
+    const clipped = fitShadowBox(pts, sun, { ...OPTS, bounds }, out);
+    expect(clipped).toBe(out);
+    expect(clipped.halfW * clipped.halfH).toBeLessThan(free.halfW * free.halfH);
+    // De hoek van de kaart (die in beeld is) zit er nog in
+    const { right, up } = lightBasis(sun);
+    const corner: Vec3 = [0, 0, 0];
+    const rel: Vec3 = [corner[0] - clipped.cx, 0, corner[2] - clipped.cz];
+    expect(Math.abs(dot(rel, right))).toBeLessThanOrEqual(clipped.halfW);
+    expect(Math.abs(dot(rel, up))).toBeLessThanOrEqual(clipped.halfH);
   });
 });
