@@ -92,6 +92,9 @@ interface DevTools {
   fireworks?: () => void;
   hallHit?: () => void;
   bRec?: typeof bRec;
+  coverage?: typeof coverage;
+  /** Zet het bereik van een voorziening aan ('water', 'market', ...) of uit (null). */
+  cover?: (k: string | null) => void;
 }
 declare global {
   interface Window {
@@ -308,3 +311,9 @@ window.__tp.fireworks = () => startFireworks();
 window.__tp.hallHit = () => hallHit();
 import { bRec } from './render/sync';
 window.__tp.bRec = bRec; // 3D-gegevens per gebouw, bijv. __tp.bRec.get(id).m.scale (het opveren bij opleveren)
+// Bereik van voorzieningen: __tp.coverage.checkCoverage() (0 = de bijgehouden tellers kloppen), __tp.cover('water')
+import * as coverage from './game/coverage';
+window.__tp.coverage = coverage;
+window.__tp.cover = k => {
+  store.coverView = k;
+};

@@ -305,6 +305,33 @@ const MODELS: Record<string, ModelFn> = {
     gr(g, 0.74, 0.22, 0.5, C.thatch, 0, 0.86, 0); // dakje
     cy(g, 0.07, 0.1, '#8a6a44', 0.12, 0.5, 0, 8); // emmer
   },
+  temple(g, a) {
+    if (a <= 2) {
+      // Een stenen tempel op een trapvormig voetstuk, met zuilen, een puntdak en een altaar met vuur
+      for (let k = 0; k < 3; k++)
+        bx(g, 1.8 - k * 0.18, 0.08, 1.8 - k * 0.18, k ? C.stone : C.stoned, 0, k * 0.08, 0);
+      bx(g, 0.62, 0.62, 0.82, '#c9bfa8', 0, 0.24, -0.05); // de binnenruimte
+      bx(g, 0.2, 0.36, 0.02, '#3b2f24', 0, 0.24, 0.36); // deuropening
+      for (const z of [-0.56, 0.56])
+        for (const x of [-0.52, 0, 0.52]) cy(g, 0.07, 0.68, '#ddd6c6', x, 0.24, z, 8);
+      bx(g, 1.36, 0.09, 1.36, '#cfc6b2', 0, 0.92, 0); // balk op de zuilen
+      gr(g, 1.4, 0.32, 1.46, C.tile, 0, 1.01, 0, Math.PI / 2); // puntdak met de voorgevel naar voren
+      bx(g, 0.24, 0.16, 0.18, C.stoned, 0, 0.24, 0.8); // altaar voor de trap
+      flame(g, 0, 0.4, 0.8, 0.8);
+    } else {
+      // Later: een kapel met een leien dak, een klokkentoren en een rond raam boven de deur
+      bx(g, 0.9, 0.62, 1.5, C.plaster, -0.25, 0, 0);
+      gr(g, 1.56, 0.44, 1.02, C.slate, -0.25, 0.62, 0, Math.PI / 2);
+      door(g, 0.9, 1.5, 0.2, 0.34, '#4a3523', -0.25);
+      cy(g, 0.13, 0.03, WIN, -0.25, 0.74, 0.765, 12).rotation.x = Math.PI / 2; // rond raam in de voorgevel
+      wins(g, 0.9, 1.5, 0.3, 0.2, 3, -0.25, 0, 0.1);
+      bx(g, 0.46, 1.3, 0.46, C.plaster, 0.55, 0, -0.45); // klokkentoren
+      bx(g, 0.5, 0.08, 0.5, C.stoned, 0.55, 1.3, -0.45);
+      bx(g, 0.14, 0.18, 0.02, '#26231f', 0.55, 1.05, -0.21); // galmgat
+      cn(g, 0.34, 0.62, C.slate, 0.55, 1.38, -0.45, 4).rotation.y = Math.PI / 4;
+      cy(g, 0.015, 0.2, C.bronze, 0.55, 2.0, -0.45, 4); // spits bovenop
+    }
+  },
   statue(g) {
     bx(g, 0.62, 0.12, 0.62, C.stoned);
     bx(g, 0.46, 0.42, 0.46, C.stone, 0, 0.12, 0); // sokkel
