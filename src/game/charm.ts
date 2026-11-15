@@ -1,8 +1,7 @@
 // Houdt bij hoe gezellig elk huis is en welke akkers hulp krijgen van een waterput of molen (zie data/charm.ts).
 import type { Building } from '../types';
 import { B } from '../data/buildings';
-import { charmFrom, charmOfHome, charmTier, farmBoostOf } from '../data/charm';
-import type { CharmTier } from '../data/charm';
+import { charmFrom, charmOfHome, farmBoostOf } from '../data/charm';
 import { G } from './state';
 import { markTip, tipSeen } from '../core/tips';
 import { toast } from '../ui/hud';
@@ -30,8 +29,6 @@ export function updateCharm(): void {
 
 /** De sfeer van een huis (0 voor alles wat geen huis is, of nog niet berekend). */
 export const charmOf = (b: Building): number => homeCharm.get(b.id) || 0;
-/** De trede van een huis: Somber, Gewoon, Gezellig of Prachtig. */
-export const tierOf = (b: Building): CharmTier => charmTier(charmOf(b));
 /** Zoveel keer sneller oogst deze akker door hulp uit de buurt (1 = gewoon). */
 export const farmBoostFor = (b: Building): number => farmBoost.get(b.id) || 1;
 

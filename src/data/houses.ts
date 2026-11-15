@@ -53,6 +53,16 @@ export function targetGrade(s: HomeState): number {
 }
 
 /**
+ * De welvaart van een huis uit een oude opslag (van voor de welvaart). Het huis krijgt de trede die past bij
+ * zijn oude sfeer (Gewoon 1, Gezellig 2, Prachtig 3), maar nooit hoger dan waar het naartoe groeit: zo houdt
+ * een geladen dorp evenveel inwoners als vroeger, en groeit het daarna gewoon verder.
+ */
+export function loadedGrade(target: number, charm: number): number {
+  const oldTier = charm >= CHARM_RICH ? 3 : charm >= CHARM_WELL ? 2 : 1;
+  return Math.min(target, oldTier);
+}
+
+/**
  * Eén stapje tijd voor de welvaart van een huis. Het klokje telt omhoog als het huis groeit en omlaag
  * (negatief) als het vervalt: zo begint het opnieuw zodra de richting omdraait. Hoogstens één trede per keer.
  */

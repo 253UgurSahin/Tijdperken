@@ -1,7 +1,15 @@
 // Laat huizen langzaam groeien of vervallen, en int een beetje belasting bij welvarende huizen.
 import type { Building } from '../types';
 import { B } from '../data/buildings';
-import { HOUSE_GRADES, joinNeeds, nextNeeds, stepGrade, targetGrade, taxPerMinute } from '../data/houses';
+import {
+  HOUSE_GRADES,
+  joinNeeds,
+  loadedGrade,
+  nextNeeds,
+  stepGrade,
+  targetGrade,
+  taxPerMinute,
+} from '../data/houses';
 import type { HomeState, HouseGrade } from '../data/houses';
 import { SERVICE_BIT, SERVICE_BY_KEY, servicesUnlocked } from '../data/services';
 import type { ServiceKey } from '../data/services';
@@ -68,7 +76,7 @@ export function updateGrades(dt: number): void {
       continue;
     }
     if (b.grade < 0) {
-      b.grade = target;
+      b.grade = loadedGrade(target, s.charm);
       b.gradeT = 0;
       continue;
     }
@@ -85,6 +93,19 @@ export function updateGrades(dt: number): void {
   if (taxOn) {
     const perMinute = taxNow();
     if (perMinute > 0) G.res.gold += (perMinute / 60) * dt;
+  }
+}
+
+/**
+ * Na het laden: huizen uit een oude opslag (trede -1) meteen hun trede geven, vóór er iets getekend wordt.
+ * Anders bouwt render/sync.ts ze eerst als Eenvoudig en een halve seconde later opnieuw.
+ */
+export function settleLoadedGrades(): void {
+  for (const b of G.bs) {
+    if (!isHome(b) || b.grade === undefined || b.grade >= 0) continue;
+    const s = homeState(b);
+    b.grade = loadedGrade(targetGrade(s), s.charm);
+    b.gradeT = 0;
   }
 }
 

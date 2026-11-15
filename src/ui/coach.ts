@@ -332,11 +332,12 @@ function speedUpTip(want: string[]): { text: string; act: CoachAct } | null {
   // Missen de meeste huizen dezelfde voorziening? Dan groeien ze niet: de goedkoopste bron die je kunt betalen
   // (pas na akkers, groeves en opslag: eerst wat het volgende tijdperk dichterbij brengt)
   const miss = commonMissing();
-  // Hoogstens één bron per zes huizen die hem missen: staat er al een (verkeerd), dan helpt nog een niet
+  // Hoogstens één bron per zes huizen die hem missen: staat er al een (verkeerd), dan helpt nog een niet.
+  // Pas vanaf zes huizen: in een klein dorp gaat het volgende tijdperk voor (de balk in Dorp geeft de tip al).
   const sources = miss
     ? G.bs.filter(b => b.type !== 'townhall' && servesOfType(b.type).some(s => s.k === miss.k)).length
     : 0;
-  if (miss && miss.total >= 4 && miss.homes * 2 > miss.total && sources * 6 < miss.homes) {
+  if (miss && miss.total >= 6 && miss.homes * 2 > miss.total && sources * 6 < miss.homes) {
     const source = BKEYS.filter(
       k =>
         k !== 'townhall' &&

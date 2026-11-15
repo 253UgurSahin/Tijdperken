@@ -8,6 +8,7 @@ import {
   HOUSE_GRADES,
   gradePopBonus,
   joinNeeds,
+  loadedGrade,
   nextNeeds,
   stepGrade,
   targetGrade,
@@ -96,5 +97,16 @@ describe('welvaart van huizen', () => {
       expect(gradePopBonus(base, 1), k).toBe(0);
     }
     for (let a = 1; a < AGES.length; a++) expect(AGE_UP[a]!.pop).toBeGreaterThan(0);
+  });
+
+  it('een oude opslag houdt de trede van zijn oude sfeer, maar niet hoger dan het doel', () => {
+    // Gewoon, Gezellig en Prachtig gaven vroeger x1, x1.1 en x1.2: dat zijn Eenvoudig, Net en Welvarend
+    expect(loadedGrade(2, 0)).toBe(1);
+    expect(loadedGrade(4, 3)).toBe(2);
+    expect(loadedGrade(4, 7)).toBe(3);
+    expect(loadedGrade(1, 7)).toBe(1);
+    expect(loadedGrade(0, 0)).toBe(0);
+    for (const charm of [0, 3, 6])
+      expect(HOUSE_GRADES[loadedGrade(4, charm)].popMul).toBeLessThanOrEqual(1.2);
   });
 });

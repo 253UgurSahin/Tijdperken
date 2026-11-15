@@ -38,6 +38,7 @@ import { cleanWonders } from '../data/wonders';
 import { cleanGroups } from '../data/army';
 import { restoreKills } from './army';
 import { computeAvail, computeCaches } from './caches';
+import { settleLoadedGrades } from './houses';
 import { spawnFoe, spawnUnit, spawnVillager } from './entities';
 import { loadRivals, saveRivals } from './rivals';
 import type { SavedRival } from './rivals';
@@ -733,6 +734,7 @@ export function wipe(): void {
 }
 export function afterLoad(): void {
   computeCaches();
+  settleLoadedGrades(); // huizen uit een oude opslag: welvaart pas na weg, bereik en sfeer (zie game/houses.ts)
   computeAvail();
   onAgeChange();
   setSpeed(1);

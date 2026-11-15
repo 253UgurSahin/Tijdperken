@@ -242,6 +242,8 @@ const SHAPES: Record<string, HomeShape> = {
 
 // Kleuren van bloemen en groen (dezelfde als bij het bloemperk)
 const FLOWERS = ['#e2574c', '#f2c94c', '#f4f1e8', '#c46bd1'];
+// Alleen de bonte bloemkleuren (geen wit): die vallen van ver nog op
+const BRIGHT = [FLOWERS[0], FLOWERS[1], FLOWERS[3]];
 const LEAF = '#4f8a3c',
   LEAF_DARK = '#3f6f30',
   WEED = '#6d7438',
@@ -296,9 +298,11 @@ function flowerBox(g: T3.Object3D, x: number, y: number, z: number, era: Era, se
     return;
   }
   const box = era === 'wood' ? C.woodd : era === 'brick' ? '#7a4a32' : era === 'iron' ? C.dmetal : C.white;
-  bx(g, 0.2, 0.05, 0.06, box, x, y, z + 0.035);
-  bx(g, 0.18, 0.03, 0.05, LEAF_DARK, x, y + 0.05, z + 0.035);
-  for (let k = 0; k < 3; k++) sp(g, 0.024, FLOWERS[(seed + k) % 4], x - 0.06 + k * 0.06, y + 0.085, z + 0.04);
+  // Iets groter dan echt: anders zie je van de gewone afstand niet dat een huis Net is geworden
+  bx(g, 0.25, 0.06, 0.08, box, x, y, z + 0.045);
+  bx(g, 0.23, 0.04, 0.07, LEAF_DARK, x, y + 0.06, z + 0.045);
+  for (let k = 0; k < 4; k++)
+    sp(g, 0.034, BRIGHT[(seed + k) % BRIGHT.length], x - 0.09 + k * 0.06, y + 0.105, z + 0.05);
 }
 
 /** Een hekje (hout of ijzer), een lage haag of grachtenpaaltjes langs de gegeven punten. */
@@ -394,6 +398,52 @@ function greenery(g: T3.Object3D, type: string, sy: number): void {
     }
 }
 
+/**
+ * Net in het grove model (ver weg, of op Laag): een paar grote, bonte blokjes in plaats van losse bloemen en
+ * paaltjes. Anders zie je van ver geen verschil tussen Eenvoudig en Net, de trede die de meeste huizen hebben.
+ */
+function coarseNeat(g: T3.Object3D, type: string, s: HomeShape, era: Era, sy: number): void {
+  s.boxes.forEach(([x, y], k) => {
+    const c = BRIGHT[(k + type.length) % BRIGHT.length];
+    if (y === 0) bx(g, 0.14, 0.16, 0.14, c, x, 0.03, s.front + 0.04);
+    else {
+      bx(g, 0.24, 0.06, 0.08, LEAF_DARK, x, y * sy, s.front + 0.04);
+      bx(g, 0.22, 0.05, 0.07, c, x, y * sy + 0.06, s.front + 0.045);
+    }
+  });
+  // Het hekje of de haag als één blok per stuk (grachtenpaaltjes als losse blokjes)
+  const pts = s.fence;
+  if (type === 'canalhouse') for (const [x, z] of pts) bx(g, 0.05, 0.22, 0.05, '#4a2a22', x, 0.03, z);
+  else
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [x0, z0] = pts[i],
+        [x1, z1] = pts[i + 1],
+        c = era === 'wood' ? C.wood : era === 'iron' ? C.dmetal : LEAF_DARK;
+      bx(
+        g,
+        0.07,
+        era === 'wood' || era === 'iron' ? 0.16 : 0.15,
+        Math.hypot(x1 - x0, z1 - z0) + 0.05,
+        c,
+        (x0 + x1) / 2,
+        0.03,
+        (z0 + z1) / 2,
+        Math.atan2(x1 - x0, z1 - z0),
+      );
+    }
+  // Groen op de balkons en terrassen van de hoge huizen: één strook per balkon
+  if (type === 'apartment')
+    for (let i = 1; i < 6; i += 2) bx(g, 0.3, 0.07, 0.05, LEAF, 0.18, (0.14 + i * 0.28) * sy + 0.05, 0.49);
+  else if (type === 'arcology')
+    for (let i = 0; i < 3; i++) {
+      const edge = (1.7 - i * 0.34) / 2 - 0.07,
+        len = (1.7 - i * 0.34) * 0.8,
+        y = (i + 1) * 0.6 * sy + 0.04;
+      bx(g, len, 0.07, 0.07, i % 2 ? FLOWERS[0] : LEAF, 0, y, edge);
+      bx(g, 0.07, 0.07, len, i % 2 ? FLOWERS[0] : LEAF, edge, y, 0);
+    }
+}
+
 /** Aanbouw (welvarend): per huis een eigen soort, ook in de grove versie zodat je het van ver ziet. */
 function annex(g: T3.Object3D, type: string, s: HomeShape, sy: number): void {
   switch (type) {
@@ -430,12 +480,13 @@ function annex(g: T3.Object3D, type: string, s: HomeShape, sy: number): void {
       break;
     }
     case 'apartment': {
-      // Een penthouse: een extra (kleinere) verdieping bovenop
-      // (donker, met veel glas: anders valt hij weg tegen het lichte dak)
+      // Een penthouse: een extra (kleinere) verdieping bovenop, in de kleur van de gevel met een glazen band
+      // en een donkere dakrand (zoals de extra laag van de arcologie), zodat hij bij het huis hoort
       const y = s.eave * sy;
-      bx(g, 0.5, 0.34, 0.46, '#5f6873', -0.14, y, 0.12);
-      bx(g, 0.52, 0.2, 0.48, GLASS, -0.14, y + 0.08, 0.12);
-      bx(g, 0.58, 0.04, 0.54, C.white, -0.14, y + 0.34, 0.12);
+      bx(g, 0.5, 0.34, 0.46, s.wall, -0.14, y, 0.12);
+      bx(g, 0.52, 0.16, 0.48, GLASS, -0.14, y + 0.1, 0.12);
+      bx(g, 0.56, 0.04, 0.52, '#4a4f57', -0.14, y + 0.34, 0.12);
+      bx(g, 0.48, 0.02, 0.44, s.roof, -0.14, y + 0.375, 0.12);
       break;
     }
     case 'towerblock': {
@@ -591,7 +642,7 @@ export function homeExtras(g: T3.Group, type: string, grade: number, size: numbe
     s.boxes.forEach(([x, y], k) => flowerBox(g, x, y * sy, s.front, era, k + type.length));
     fence(g, s.fence, era, type);
     greenery(g, type, sy);
-  }
+  } else if (grade >= 2) coarseNeat(g, type, s, era, sy);
   if (grade >= 3) {
     annex(g, type, s, sy);
     if (s.tree && detail) tree(g, s.tree[0], s.tree[1], era);

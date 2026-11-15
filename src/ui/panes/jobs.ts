@@ -28,6 +28,7 @@ export function renderJobs() {
     fixed = G.vs.length - counts.auto,
     open = fixedJobsOpen ?? fixed > 0;
   $('#popSect').textContent = `${G.vs.length} dorpelingen`;
+  const hint = welvaartHint(); // één keer per keer tekenen: dit loopt alle huizen langs
   const sig = JSON.stringify([
     counts,
     rows,
@@ -41,7 +42,7 @@ export function renderJobs() {
     Object.keys(avail).join(),
     open,
     gradeSummary(),
-    welvaartHint(),
+    hint,
   ]);
   const adv = G.age >= 1 || G.vs.length >= 12;
   // Eén regel per taak: wie er nu op staan, met min en plus
@@ -66,7 +67,7 @@ export function renderJobs() {
         : '<p class="why" style="margin:6px 0 0">Je dorpelingen kiezen zelf het werk dat het hardst nodig is.</p>'
     }
     <div class="cmd" style="margin-top:10px">${CB('data-act="train"', '☺', 'Trainen', { dis: !(popNow() < popCap() && G.res.food >= trainCost()), cost: costHTML({ food: trainCost() }, true), tip: 'Train een dorpeling in het stamhuis' })}${adv ? CB('data-act="idle"', '☉', 'Zonder werk', { tip: 'Selecteer wie niets doet' }) + CB('data-act="auto"', '↻', G.autoTrain ? 'Vanzelf trainen: aan' : 'Vanzelf trainen: uit', { on: G.autoTrain, tip: 'Het stamhuis traint vanzelf dorpelingen als er voedsel en plek is' }) : ''}</div>
-    <div class="statline ${popNow() >= popCap() && G.bs.some(b => b.type !== 'townhall' && B[b.type].pop && b.done) ? 'warn' : ''}"><i class="dot"></i>${popNow() >= popCap() ? (G.bs.some(b => b.type !== 'townhall' && B[b.type].pop) ? 'Vol: bouw meer woningen' : 'Bouw een hut voor meer inwoners') : G.training ? `Traint${G.trainQ ? ` · ${G.trainQ} in wachtrij` : ''}` : `${inside ? inside + ' binnen · ' : ''}${G.vs.filter(v => !v.hidden && v.state === 'idle').length} stilstaand`}</div>${welvaartBar()}`,
+    <div class="statline ${popNow() >= popCap() && G.bs.some(b => b.type !== 'townhall' && B[b.type].pop && b.done) ? 'warn' : ''}"><i class="dot"></i>${popNow() >= popCap() ? (G.bs.some(b => b.type !== 'townhall' && B[b.type].pop) ? 'Vol: bouw meer woningen' : 'Bouw een hut voor meer inwoners') : G.training ? `Traint${G.trainQ ? ` · ${G.trainQ} in wachtrij` : ''}` : `${inside ? inside + ' binnen · ' : ''}${G.vs.filter(v => !v.hidden && v.state === 'idle').length} stilstaand`}</div>${welvaartBar(hint)}`,
   );
 }
 
@@ -74,7 +75,7 @@ export function renderJobs() {
  * Hoe welvarend je huizen zijn, als een gekleurde balk met een korte tip eronder (zie game/houses.ts).
  * Pas vanaf drie huizen: daarvoor is er nog weinig te kiezen.
  */
-function welvaartBar(): string {
+function welvaartBar(hint: string): string {
   const count = gradeSummary(),
     total = HOUSE_GRADES.reduce((n, g) => n + count[g.k], 0);
   if (total < 3) return '';
@@ -86,7 +87,6 @@ function welvaartBar(): string {
     .map(g => `<i style="flex:${count[g.k]};background:${g.c}" title="${g.n}: ${count[g.k]}"></i>`)
     .join('');
   const words = shown.map(g => `${count[g.k]} ${g.n.toLowerCase()}`).join(' · ');
-  const hint = welvaartHint();
   return `<div class="charmbar welvaartbar" aria-label="Welvaart van je huizen: ${words}"><div class="lbl">Welvaart <span>${words}</span></div><div class="bar">${parts}</div>${hint ? `<p class="why">${hint}</p>` : ''}</div>`;
 }
 

@@ -587,8 +587,10 @@ export function syncBuildings() {
       // Net opgeleverd, of het stamhuis krijgt het uiterlijk van een nieuw tijdperk: dan veert het even op
       const justFinished = r && !r.done && b.done;
       const newLook = r && r.done && b.done && b.type === 'townhall' && r.key.split('|')[1] !== String(G.age);
-      // Een huis dat groeit of vervalt (zie game/houses.ts) veert ook op, zodat je de verandering ziet
-      const newGrade = r && r.done && b.done && r.key.split('|')[4] !== key.split('|')[4];
+      // Een huis dat groeit of vervalt (zie game/houses.ts) veert ook op, zodat je de verandering ziet. Alleen
+      // als het spel dat meldde (een nieuwe pop_t): een geladen opslag blijft zo stil.
+      const newGrade =
+        r && r.done && b.done && r.key.split('|')[4] !== key.split('|')[4] && b.pop_t !== r.popSeen;
       const pops = justFinished || newLook || newGrade;
       if (r) {
         BG3.remove(r.g);
