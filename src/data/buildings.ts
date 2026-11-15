@@ -591,9 +591,9 @@ export const B: Record<string, BuildingDef> = {
     size: 1,
     hp: 0,
     road: 1,
-    cost: { stone: 2 },
+    cost: { wood: 2 },
     h: 0,
-    desc: 'Dorpelingen en soldaten kiezen vanzelf de weg en lopen er sneller over. Sleep om aan te leggen.',
+    desc: 'Gebouwen moeten aan een weg naar het stamhuis liggen om goed te werken. Dorpelingen, soldaten en karren gaan er sneller over. Sleep om aan te leggen.',
   },
 
   /*
@@ -866,7 +866,7 @@ export const B: Record<string, BuildingDef> = {
 export const BKEYS = Object.keys(B);
 export const ROADS: RoadDef[] = [
   null!,
-  { n: 'Pad', cost: { stone: 2 } },
+  { n: 'Pad', cost: { wood: 2 } }, // hout: zo eet het begin de schaarse steen niet op
   { n: 'Klinkerweg', cost: { stone: 4 } },
   { n: 'Asfaltweg', cost: { stone: 3, steel: 1 } },
 ];

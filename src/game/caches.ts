@@ -13,6 +13,7 @@ import { G } from './state';
 import { darkness } from './time';
 import { mul } from './bonus';
 import { bLight, bRate } from './upgrades';
+import { updateRoadNet, roadRate } from './roads';
 import { dist } from '../util/math';
 import { updateCharm } from './charm';
 import { amt, claims, isUnl, node, nodeLists } from '../world/world';
@@ -43,7 +44,7 @@ export let lights: { x: number; y: number; r: number; warm: boolean }[] = [],
 export const siteCnt = new Map<number, number>(),
   farmCnt = new Map<number, number>();
 /** Hoeveel stroom centrale b levert als hij draait. Alleen voor gebouwen met `gen` (een centrale). */
-export const genPower = (b: Building): number => B[b.type].gen!.power * bRate(b) * mul('power');
+export const genPower = (b: Building): number => B[b.type].gen!.power * bRate(b) * mul('power') * roadRate(b);
 /**
  * Gebruikt dit gebouw nu stroom? Niet als het niets te doen heeft: een fabriek of pomp die vanzelf pauzeert,
  * een pomp op een lege bron, of een kazerne of werkplaats zonder wachtrij.
@@ -59,6 +60,7 @@ function needsPower(b: Building): boolean {
   return true;
 }
 export function computeCaches(): void {
+  updateRoadNet();
   powerSup = 0;
   powerDem = 0;
   let hall = false;

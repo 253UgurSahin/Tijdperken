@@ -9,6 +9,7 @@ import { computeAvail, computeCaches } from './caches';
 import { has, pay } from './economy';
 import { fxRing } from './fx';
 import { buildCost } from './placement';
+import { markRoadsChanged } from './roads';
 import { G } from './state';
 import { bMaxHp, roadTier } from './upgrades';
 import { TER, bmap, isUnl, node, road, setBlk, ter } from '../world/world';
@@ -113,5 +114,6 @@ export function renewRoads(): number {
       road[i] = t;
       n++;
     }
+  markRoadsChanged(); // betere wegen: gebouwen eraan werken sneller
   return n;
 }

@@ -72,6 +72,9 @@ interface DevTools {
   /** Zet de lading van de poort: 0.9 is 90%. */
   charge?: (frac: number) => void;
   bossRaid?: (age?: number) => void;
+  roads?: typeof roads;
+  /** Gebouwen die niet aan de weg liggen, als 'soort@x,y'. */
+  unlinked?: () => string[];
   diplomacy?: typeof diplomacy;
   /** Geeft de rivaal terug (leeg als die er niet is). */
   rel?: (i?: number, value?: number) => Rival | undefined;
@@ -257,6 +260,10 @@ window.__tp.bossRaid = (age = Math.max(1, G.age)) => {
   G.boss = { age, day: 0 }; // dag 0: meteen klaar, zonder rustnacht
   spawnRaid();
 };
+// Het wegennet: __tp.roads is game/roads.ts, __tp.unlinked() geeft wat niet aan de weg ligt
+import * as roads from './game/roads';
+window.__tp.roads = roads;
+window.__tp.unlinked = () => roads.unlinkedBuildings().map(b => `${b.type}@${b.x},${b.y}`);
 // Diplomatie: zet een relatie (__tp.rel(0, 70)), laat een rivaal een bericht sturen (__tp.rivalOffer(0, 'ask')),
 // open het venster (__tp.diplo()), of laat een bondgenoot meteen helpen (__tp.allyHelp(0))
 import * as diplomacy from './game/diplomacy';

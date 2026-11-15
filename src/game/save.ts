@@ -44,13 +44,14 @@ import type { SavedRival } from './rivals';
 import { currentChallenge } from './scenario';
 import { G, bById, baseState, gameOpts, placeName, setGame } from './state';
 import { refreshWonders } from './wonders';
+import { markRoadsChanged, migrateOldTown } from './roads';
 import { setZoom } from '../input/input';
 import { clearSel } from '../input/selection';
 import { clampCam } from '../render/camera';
 import { cam } from '../render/scene';
 import { onAgeChange } from '../ui/age';
 import { sigs } from '../ui/header';
-import { setSpeed, toast } from '../ui/hud';
+import { note, setSpeed, toast } from '../ui/hud';
 import { rate } from '../ui/resources';
 import { bigMapOpen, setBigMap } from '../render/minimap';
 import { $ } from '../util/dom';
@@ -128,6 +129,7 @@ export function serialize(): string {
     g,
     // Wegen, grondstoffen en hoeveelheden op de kaart, ingepakt (pack: 1)
     pack: 1,
+    rn: 1, // gemaakt met het wegennet: bij laden niet nog eens gratis paden geven
     road: packArray(road),
     node: packArray(node),
     amt: packArray(new Uint8Array(amt.buffer)),
@@ -144,6 +146,7 @@ export function serialize(): string {
       on: b.on,
       q: b.q,
       rally: b.rally,
+      rf: b.roadFree ? 1 : undefined,
     })),
     // Het nummer (id) bewaren we, zodat groepen na het laden nog kloppen; kills = overwinningen (veteranen)
     vs: G.vs.map(v => ({ x: v.x, y: v.y, name: v.name, job: v.job, hp: v.hp, id: v.id })),
@@ -193,8 +196,12 @@ interface SaveData {
   node: string;
   amt: string;
   pack?: number;
+  /** 1: opslag met het wegennet. Ontbreekt bij oudere opslag: die krijgt bij laden gratis paden. */
+  rn?: number;
   bs: (Pick<Building, 'id' | 'type' | 'x' | 'y' | 'hp' | 'done' | 'prog' | 'bt' | 'on' | 'q' | 'rally'> & {
     lvl: number;
+    /** 1: dit gebouw hoeft geen weg (zie Building.roadFree). */
+    rf?: number;
   })[];
   /** Opslag van vóór de groepen heeft geen id bij dorpelingen, en van vóór de veteranen geen kills. */
   vs: { x: number; y: number; name: string; job: string; hp: number; id?: number }[];
@@ -370,10 +377,11 @@ export function deserialize(str: string): boolean {
   amt.set(new Uint16Array(unpackArray(s.amt, amt.length * 2, packed).buffer));
   buildLists();
   bById.clear();
-  for (const o of s.bs) {
+  for (const { rf, ...o } of s.bs) {
     const d = B[o.type];
     const b: Building = {
       ...o,
+      roadFree: !!rf,
       kind: 'b',
       cd: 0,
       ct: 0,
@@ -455,7 +463,12 @@ export function deserialize(str: string): boolean {
     clampCam();
   }
   clearSel();
+  // Wegen zijn geladen: het net opnieuw uitrekenen. Een opslag van vóór de wegen krijgt gratis paden.
+  markRoadsChanged();
+  const oldTown = !s.rn;
+  if (oldTown) migrateOldTown();
   afterLoad();
+  if (oldTown) note('Nieuw: gebouwen werken pas goed aan een weg. Je dorp kreeg gratis paden.', 'good');
   liveGame = G;
   return true;
 }

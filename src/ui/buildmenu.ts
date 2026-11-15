@@ -39,7 +39,7 @@ export function bShort(k: string): string {
   const d = B[k];
   // Elk wonder heeft een korte uitleg van zijn bonus (perk), zie data/buildings.ts
   if (d.wonder) return d.perk!;
-  if (d.road) return 'Sneller lopen · sleep om aan te leggen';
+  if (d.road) return 'Gebouwen aan de weg werken · sleep om aan te leggen';
   if (d.wall) return d.gate ? 'Eigen volk door, vijand niet' : `Muur · ${d.hp} leven · sleep een lijn`;
   if (d.pop) return `+${d.pop} inwoners`;
   // Versiering: sfeer voor huizen in de buurt, en soms hulp voor akkers

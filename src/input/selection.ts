@@ -23,6 +23,7 @@ import { RIVAL } from '../data/rivals';
 import { setExpand, toast } from '../ui/hud';
 import { demolish } from '../ui/inspector';
 import { canDemolish, noDemolishText } from '../game/wonders';
+import { markRoadsChanged } from '../game/roads';
 import { bmap, inb, isUnl, node, nodeVis, road, walkable } from '../world/world';
 import { VH, VW } from '../render/scene';
 
@@ -85,6 +86,7 @@ export function clearSel() {
   sel.b = null;
   sel.camp = null;
   sel.node = -1;
+  sel.road = -1;
   sel.rb = null;
   sel.rival = null;
   sel.rivalUnit = null;
@@ -201,6 +203,7 @@ export function leftClick(sx: number, sy: number, shift: boolean, ctrl?: boolean
       sfx('boom');
     } else if (inb(ix, iy) && road[iy * W + ix]) {
       road[iy * W + ix] = 0;
+      markRoadsChanged();
       burst(ix + 0.5, iy + 0.5, '#8a7a62');
       sfx('tick');
     } else if (b) toast(noDemolishText(b), 'bad');
@@ -286,6 +289,14 @@ export function leftClick(sx: number, sy: number, shift: boolean, ctrl?: boolean
   if (inb(ix, iy) && nodeVis(iy * W + ix)) {
     clearSel();
     sel.node = iy * W + ix;
+    store.uiDirty = true;
+    return;
+  }
+  // Een weg is een eigen stuk van je dorp: aanklikken toont het stuk net (gebouwen en eenheden gaan voor)
+  if (inb(ix, iy) && road[iy * W + ix]) {
+    sfx('select');
+    clearSel();
+    sel.road = iy * W + ix;
     store.uiDirty = true;
     return;
   }

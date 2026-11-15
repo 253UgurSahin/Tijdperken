@@ -5,6 +5,7 @@ import { CN, CS, W } from '../config';
 import { B } from '../data/buildings';
 import { canBuyChunk } from '../game/placement';
 import { G, bById, sel } from '../game/state';
+import { roadStretch } from '../game/roads';
 import { darkness } from '../game/time';
 import { drag, hoverChunk, mouse } from '../input/input';
 import { isFar, updateCamera } from './camera';
@@ -139,6 +140,10 @@ export function render() {
   const rival = sel.rival && rivalById(sel.rival);
   if (rival && !rival.dead) ringAt(rival.x + 1, rival.y + 1, 1.8, '#e3584a', 0.9);
   if (sel.node >= 0) ringAt((sel.node % W) + 0.5, ((sel.node / W) | 0) + 0.5, 0.45, '#ffffff', 0.9);
+  // Een aangeklikte weg: de tegel zelf fel, en het stuk net waar hij bij hoort zacht (hooguit 400 tegels)
+  if (sel.road >= 0)
+    for (const i of roadStretch(sel.road, 400))
+      quadAt((i % W) + 0.5, ((i / W) | 0) + 0.5, 0.96, 0.96, '#9fe28a', i === sel.road ? 0.5 : 0.24, 0.035);
   if (
     mouse.in &&
     !drag &&

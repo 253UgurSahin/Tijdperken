@@ -15,6 +15,7 @@ import { cleanVictories } from '../data/victories';
 import { placeBuilding, spawnFoe, spawnVillager } from './entities';
 import { hasRule } from './mods';
 import { setupRivals } from './rivals';
+import { layStartRoads } from './roads';
 import { afterLoad } from './save';
 import { clearSel } from '../input/selection';
 import { centerOn } from '../render/camera';
@@ -37,6 +38,8 @@ export const sel = {
   b: null as number | null,
   camp: null as number | null,
   node: -1,
+  /** Een aangeklikte wegtegel (index op de kaart), of -1. */
+  road: -1,
   rb: null as number | null,
   rival: null as number | null,
   rivalUnit: null as number | null,
@@ -199,7 +202,8 @@ export function newGame(o: NewGameOptions = {}): void {
   if (hasRule('poorSoil')) thinOutNodes();
   buildLists();
   bById.clear();
-  placeBuilding('townhall', CX - 1, CY - 1, true);
+  const hall = placeBuilding('townhall', CX - 1, CY - 1, true);
+  layStartRoads(hall); // gratis paden rond het stamhuis (zie game/roads.ts)
   const extra =
     (start.villagers || 0) + (challenge ? challenge.villagers : 0) + (hasRule('richStart') ? 3 : 0);
   const villagers = 5 + extra;

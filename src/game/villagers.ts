@@ -17,6 +17,7 @@ import { bMaxHp, carryMax, farmSlots } from './upgrades';
 import { clamp, dist } from '../util/math';
 import { findPath, follow } from '../world/pathfinding';
 import { farmBoostFor } from './charm';
+import { roadLinked, roadRate } from './roads';
 import { flyToBar } from '../ui/flyres';
 import { amt, claims, isUnl, node, nodeLists, unreach, walkable } from '../world/world';
 
@@ -25,7 +26,8 @@ function nearestDrop(x: number, y: number): Building | null {
     bd = 1e9;
   for (const b of G.bs) {
     const d = B[b.type];
-    if (!b.done || !d.drop) continue;
+    // Een opslag zonder weg krijgt niets: dan lopen ze naar het stamhuis (dat ligt altijd aan de weg)
+    if (!b.done || !d.drop || !roadLinked(b)) continue;
     const dd = dist(x, y, b.x + d.size / 2, b.y + d.size / 2);
     if (dd < bd) {
       bd = dd;
@@ -397,7 +399,7 @@ function doGather(v: Villager, dt: number) {
     resourceBonus(v.res!) *
     (G.rain && t.k === 'node' ? 0.9 : 1) *
     (t.k === 'farm' ? mul('farm') : 1) *
-    (t.k === 'farm' ? mul('farm.plow') * farmBoostFor(t.b) : 1) * // een waterput of molen in de buurt helpt
+    (t.k === 'farm' ? mul('farm.plow') * farmBoostFor(t.b) * roadRate(t.b) : 1) * // waterput, molen en weg helpen
     mul('gather.all'); // ook tijdelijke bonussen uit gebeurtenissen, zoals een oogstfeest
   while (v.timer >= 1) {
     v.timer -= 1;

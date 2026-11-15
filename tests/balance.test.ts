@@ -9,6 +9,9 @@ import { CHUNK_GOLD_AGE, chunkCostFor } from '../src/data/economy';
 import { canMake } from '../src/data/succession';
 import { TECH } from '../src/data/tech';
 import { FOES, UNITS, bonusMul } from '../src/data/units';
+import { ROADS } from '../src/data/buildings';
+import { DIFFICULTIES } from '../src/data/difficulty';
+import { LINK_AUTO, OFFROAD_RATE } from '../src/data/roads';
 
 /** Welke grondstoffen kun je in tijdperk `age` krijgen? Verzamelen, oppompen of in een fabriek maken. */
 function obtainable(age: number) {
@@ -149,5 +152,21 @@ describe('uitbreiden', () => {
   it('goud vraagt het pas als je een markt hebt kunnen bouwen (nodig voor de Gouden Eeuw)', () => {
     expect(AGE_UP[CHUNK_GOLD_AGE]!.need).toContain('market');
     expect(B.market.age).toBeLessThan(CHUNK_GOLD_AGE);
+  });
+});
+
+describe('wegen', () => {
+  it('een pad kost alleen wat je in de steentijd hebt, en geen steen', () => {
+    const early = obtainable(0);
+    for (const k of Object.keys(ROADS[1].cost)) expect(early.has(k), k).toBe(true);
+    expect(ROADS[1].cost.stone).toBeUndefined();
+  });
+  it('een kort pad dat vanzelf komt, kost hooguit een kwart van het starthout', () => {
+    const hardest = Math.min(...DIFFICULTIES.map(d => d.start.wood || 0));
+    expect((ROADS[1].cost.wood || 0) * LINK_AUTO).toBeLessThanOrEqual(hardest / 4);
+  });
+  it('zonder weg werkt een gebouw trager, maar staat het nooit stil', () => {
+    expect(OFFROAD_RATE).toBeGreaterThanOrEqual(0.25);
+    expect(OFFROAD_RATE).toBeLessThanOrEqual(0.5);
   });
 });

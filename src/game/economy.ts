@@ -10,6 +10,7 @@ import { avail, goal, powerDem, powerRatio, powerSup, usePerMin, wanted } from '
 import { popCap, popNow } from './entities';
 import { G } from './state';
 import { darkness } from './time';
+import { roadLinked } from './roads';
 import { amt, node } from '../world/world';
 
 export function has(c: Cost, m = 1): boolean {
@@ -46,6 +47,7 @@ export function waitReason(b: Building): string {
   const d = B[b.type];
   if (!b.done || !(d.conv || d.pump || d.gen || d.train)) return '';
   if (!b.on) return 'Uitgezet door jou';
+  if (!roadLinked(b)) return 'Geen weg: werkt maar op een derde';
   if (d.gen) {
     if (d.gen.solar) return darkness() > 0.3 ? 'Het is donker: weinig zonnestroom' : '';
     if (b.run) return '';

@@ -13,6 +13,7 @@ import { fire, nearestFoe } from './military';
 import { G } from './state';
 import { mul } from './bonus';
 import { bRate, lvlOf, towerDamage, towerRange } from './upgrades';
+import { roadRate } from './roads';
 // Elders importeren ze towerDamage nog uit dit bestand
 export { towerDamage };
 import { amt, node } from '../world/world';
@@ -29,7 +30,8 @@ export function bUpdate(b: Building, dt: number): void {
   // Een fabriek pauzeert vanzelf als er genoeg is van wat hij maakt (b.plenty, zie game/caches.ts)
   if (d.conv && b.on && !b.plenty) {
     const mill = b.type === 'windmill' || b.type === 'powdermill' ? mul('mill.speed') : 1;
-    b.ct += dt * pr * bRate(b) * mill * mul('conv.speed');
+    // Zonder weg werkt hij maar op een derde, aan klinkers of asfalt juist sneller (zie game/roads.ts)
+    b.ct += dt * pr * bRate(b) * roadRate(b) * mill * mul('conv.speed');
     if (b.ct >= d.conv.t) {
       // Wat het volgende tijdperk kost, gebruikt hij niet: dat bewaart hij (b.saving)
       b.saving = keptForGoal(d.conv.in);
@@ -74,7 +76,7 @@ export function bUpdate(b: Building, dt: number): void {
   if (d.pump && b.on && !b.plenty) {
     const i = b.y * W + b.x;
     if (node[i] === NI.oil && amt[i] > 0) {
-      b.ct += dt * pr * bRate(b) * mul('conv.speed');
+      b.ct += dt * pr * bRate(b) * roadRate(b) * mul('conv.speed');
       if (b.ct >= d.pump.t) {
         b.ct = 0;
         amt[i]--;
@@ -109,7 +111,7 @@ export function bUpdate(b: Building, dt: number): void {
     const U = UNITS[b.q[0]];
     b.blocked = popNow() >= popCap();
     if (!b.blocked) {
-      b.qt += dt * pr * (1 + 0.2 * lvlOf(b)) * mul('train.speed');
+      b.qt += dt * pr * (1 + 0.2 * lvlOf(b)) * roadRate(b) * mul('train.speed');
       if (b.qt >= U.t) {
         b.qt = 0;
         const k = b.q.shift()!,

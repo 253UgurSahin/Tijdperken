@@ -196,6 +196,8 @@ export interface Building extends Hittable {
   plenty?: boolean;
   /** De grondstof die een fabriek bewaart voor het volgende tijdperk, of leeg (zie game/buildings.ts). */
   saving?: string;
+  /** Hoeft geen weg: een gebouw uit een oude opslag dat er niet aan te leggen was (zie game/roads.ts). */
+  roadFree?: boolean;
 }
 
 export type VTarget = { k: 'node'; i: number } | { k: 'farm'; b: Building } | { k: 'site'; b: Building };
@@ -804,8 +806,8 @@ export interface GameState {
 export interface CoachAct {
   l: string;
   b?: string;
-  /** speed: de tijd op 2× zetten (als je alleen nog hoeft te wachten). */
-  k?: 'age' | 'alarm' | 'expand' | 'sel' | 'speed';
+  /** speed: de tijd op 2× zetten (als je alleen nog hoeft te wachten). road: pad aanleggen naar gebouw id. */
+  k?: 'age' | 'alarm' | 'expand' | 'sel' | 'speed' | 'road';
   id?: number;
   /** Bij uitbreiden: de grondstof die je zoekt. */
   r?: string;

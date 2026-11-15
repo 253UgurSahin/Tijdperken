@@ -9,6 +9,7 @@ import { th } from '../game/events';
 import { isMarching, isRaider } from '../game/military';
 import { buildCost, lackText } from '../game/placement';
 import { G, bById, sel } from '../game/state';
+import { buildRoadLink } from '../game/roads';
 import { selectIdle, zoomTo } from '../input/input';
 import { clearSel } from '../input/selection';
 import { centerOn } from '../render/camera';
@@ -198,6 +199,16 @@ export function runCoachAct(a: CoachAct): void {
     if (b) {
       clearSel();
       sel.b = b.id;
+      centerOn(b.x + 1, b.y + 1);
+    }
+  } else if (a.k === 'road') {
+    // Pad aanleggen naar dit gebouw; lukt dat niet vanzelf, dan sleep je het zelf (het gebouw blijft gekozen)
+    const b = bById.get(a.id!);
+    if (b && !buildRoadLink(b)) {
+      clearSel();
+      sel.b = b.id;
+      store.placing = 'road';
+      setTab('eco');
       centerOn(b.x + 1, b.y + 1);
     }
   }

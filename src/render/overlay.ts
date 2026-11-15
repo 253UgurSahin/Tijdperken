@@ -19,6 +19,11 @@ import { rbRec } from './rivals3d';
 import { DPR, VH, VW, octx } from './scene';
 import { bRec, eRec } from './sync';
 import { clamp } from '../util/math';
+import { LINK_AUTO, needsRoad } from '../data/roads';
+import { roadLinked } from '../game/roads';
+import { canPlace, ghostPos } from '../game/placement';
+import { mouse } from '../input/input';
+import { ghostRoadPlan } from './ghost';
 
 function obar(x: number, y: number, w: number, f: number, col: string) {
   const c = octx;
@@ -144,6 +149,51 @@ function expandLabels() {
       else if (fits(26, 26)) plusMark(sx, sy, col);
     }
 }
+/** Oranje rondje met een stukje weg erin: dit gebouw ligt niet aan de weg. */
+function roadBadge(x: number, y: number) {
+  const c = octx;
+  c.fillStyle = 'rgba(10,14,20,.55)';
+  c.beginPath();
+  c.arc(x, y + 1, 11, 0, TAU);
+  c.fill();
+  c.fillStyle = '#e0a63a';
+  c.beginPath();
+  c.arc(x, y, 10, 0, TAU);
+  c.fill();
+  // Twee bermen schuin omhoog en een gestippelde middenstreep, zoals een weg in de verte
+  c.strokeStyle = '#2a2116';
+  c.lineCap = 'round';
+  c.lineWidth = 2;
+  c.beginPath();
+  c.moveTo(x - 6, y + 6);
+  c.lineTo(x - 2, y - 6);
+  c.moveTo(x + 6, y + 6);
+  c.lineTo(x + 2, y - 6);
+  c.stroke();
+  c.lineWidth = 1.6;
+  c.setLineDash([2.5, 2.5]);
+  c.beginPath();
+  c.moveTo(x, y + 6);
+  c.lineTo(x, y - 6);
+  c.stroke();
+  c.setLineDash([]);
+  c.lineCap = 'butt';
+}
+/** Onder het voorbeeld van een gebouw dat een weg nodig heeft: ligt het aan de weg, of hoeveel pad komt erbij? */
+function roadPlanLabel() {
+  const type = store.placing;
+  if (!type || !mouse.in || mouse.touch || drag || !needsRoad(B[type])) return;
+  const [gx, gy] = ghostPos(),
+    s = B[type].size;
+  if (canPlace(type, gx, gy, true)) return;
+  const plan = ghostRoadPlan(type, gx, gy),
+    [sx, sy, sz] = proj(gx + s / 2, 0, gy + s + 0.4);
+  if (sz > 1) return;
+  if (!plan) otext(sx, sy + 16, 'Geen weg in de buurt', '#ff8a7a', 13);
+  else if (!plan.length) otext(sx, sy + 16, 'Aan de weg', '#8fe07a', 13);
+  else if (plan.length <= LINK_AUTO) otext(sx, sy + 16, `+${plan.length} pad`, '#f0c060', 13);
+  else otext(sx, sy + 16, `+${plan.length} pad: sleep zelf`, '#f0c060', 13);
+}
 export function drawOverlay() {
   const c = octx;
   c.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -156,6 +206,9 @@ export function drawOverlay() {
       s = d.size,
       [sx, sy, sz] = proj(b.x + s / 2, r.h * (b.done ? 1 : 0.6) + 0.25, b.y + s / 2);
     if (sz > 1 || sx < -50 || sy < -50 || sx > VW + 50 || sy > VH + 50) continue;
+    // Niet aan de weg: een oranje wegbordje. Ver uitgezoomd alleen bij het gekozen gebouw (anders te druk).
+    if (needsRoad(d) && !b.roadFree && (z >= 9 || sel.b === b.id) && !roadLinked(b))
+      roadBadge(sx - 16, sy - 14);
     if (!b.done) {
       obar(sx, sy, Math.min(60, s * z * 0.8), b.prog / b.bt, '#e2b92c');
       continue;
@@ -207,6 +260,7 @@ export function drawOverlay() {
       if (sz < 1) otext(sx, sy, e.txt, e.col, 13, Math.min(1, (e.life / e.max) * 2));
     }
   if (store.expandMode) expandLabels();
+  roadPlanLabel();
   if (store.raidPing) {
     // Waar de aanval begint; tijdens de finale ook waar de groepen uit de andere richtingen komen (raidPing.more)
     const spots = [[store.raidPing.x, store.raidPing.y], ...(store.raidPing.more || [])];

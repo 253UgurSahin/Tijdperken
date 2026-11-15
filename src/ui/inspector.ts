@@ -5,7 +5,7 @@ import { store } from '../core/store';
 import { sfx } from '../audio/sound';
 import { W } from '../config';
 import { AGES } from '../data/ages';
-import { B } from '../data/buildings';
+import { B, ROADS } from '../data/buildings';
 import { NODES } from '../data/nodes';
 import { PEOPLE } from '../data/peoples';
 import { GATHER, MARKET_RES, RES } from '../data/resources';
@@ -35,6 +35,21 @@ import {
   upgradeTools,
 } from '../game/upgrades';
 import { buildCost } from '../game/placement';
+import {
+  buildRoadLink,
+  buildingsOnStretch,
+  markRoadsChanged,
+  onRoadNet,
+  planRoadLink,
+  roadLinkCost,
+  roadTierOf,
+  roadVersion,
+} from '../game/roads';
+import { LINK_MAX, needsRoad, offRoadEffect } from '../data/roads';
+import { lackText } from '../game/placement';
+import { renewRoads, roadRenewCost } from '../game/renew';
+import { roadTier } from '../game/upgrades';
+import { road } from '../world/world';
 import { formationMove, unitRank, veteranMul } from '../game/army';
 import { chevronsHTML, formationLineHTML, rankLineHTML } from './army';
 import { unhide } from '../game/villagers';
@@ -85,6 +100,37 @@ function charmLine(b: Building): string {
   const homes = G.bs.filter(h => h.done && B[h.type].pop && charmFrom(B, b, h) !== 0).length;
   const who = homes === 1 ? '1 huis' : `${homes} huizen`;
   return `<div class="statline charm ${d.charm.v > 0 ? 'cosy' : 'grim'}"><i class="dot"></i>${charmText(b.type)} · raakt ${who}</div>`;
+}
+/**
+ * Ligt dit gebouw aan de weg? Aan de weg: welke wegsoort (betere wegen geven een bonus). Niet: wat dat kost aan
+ * werk, met een knop die het pad aanlegt. Leeg voor gebouwen die geen weg nodig hebben.
+ */
+function roadLine(b: Building): string {
+  const d = B[b.type];
+  if (!needsRoad(d) || b.roadFree) return '';
+  const tier = roadTierOf(b);
+  if (tier > 0)
+    return `<div class="statline idle"><i class="dot"></i>Aan de weg · ${ROADS[tier].n}${tier > 1 ? ` · +${(tier - 1) * 10}%` : ''}</div>`;
+  const plan = planRoadLink(b, LINK_MAX),
+    cost = plan && roadLinkCost(plan),
+    why = !plan
+      ? 'Te ver of iets in de weg: sleep zelf een pad'
+      : !has(cost!)
+        ? `Nog ${lackText(cost!)} nodig`
+        : '';
+  const button = `<div class="upf">${cost ? costHTML(cost, true) : ''}<button class="primary" data-b="road" ${why ? `disabled title="${esc(why)}"` : ''}>Pad aanleggen</button></div>`;
+  // Een fabriek zegt het al in zijn werkregel (zie waitReason): dan alleen de knop
+  const said = !!waitReason(b);
+  return (
+    (said ? '' : `<div class="statline warn"><i class="dot"></i>Niet aan de weg: ${offRoadEffect(d)}</div>`) +
+    button
+  );
+}
+/** Wat de weg-regel van een gebouw verandert: wegsoort, en of de knop 'Pad aanleggen' kan. */
+function roadSig(b: Building): string {
+  if (!needsRoad(B[b.type]) || b.roadFree || roadTierOf(b) > 0) return '';
+  const plan = planRoadLink(b, LINK_MAX);
+  return roadVersion() + '/' + (plan ? plan.length + (has(roadLinkCost(plan)) ? 'y' : 'n') : 'x');
 }
 import { canDemolish, noDemolishText, ownerLine, refreshWonders, wonderStatus } from '../game/wonders';
 
@@ -151,7 +197,7 @@ export function renderInspector() {
     selCmds = rival.cmds;
     return setHTML(p, 'ins', rival.sig, () => rival.html);
   }
-  if (!vs.length && !us.length && !b && !camp && sel.node < 0) {
+  if (!vs.length && !us.length && !b && !camp && sel.node < 0 && sel.road < 0) {
     document.body.classList.remove('insp');
     selCmds = null;
     selCtx = '';
@@ -287,6 +333,38 @@ export function renderInspector() {
         `${head(im(portrait('f', Math.min(camp.tier, 5))), 'Vijandelijk kamp', `Niveau ${camp.tier + 1} · ${guards} bewakers`)}${hpl(camp.hp / camp.mhp, `${Math.ceil(camp.hp)}/${Math.ceil(camp.mhp)}`, 'bad')}<p class="small" style="margin-top:8px">Verover het voor buit. Het gebied wordt dan van jou.</p>`,
     );
   }
+  if (sel.road >= 0) {
+    const i = sel.road,
+      tier = road[i];
+    if (!tier) {
+      sel.road = -1;
+      return;
+    }
+    const net = onRoadNet(i),
+      old = tier < roadTier();
+    const renew = roadRenewCost();
+    selCtx = ROADS[tier].n;
+    selCmds =
+      CB('data-b="roaddel"', '✕', 'Weghalen', {
+        danger: 1,
+        tip: 'Haal dit stuk weg weg (gratis, zonder geld terug)',
+      }) +
+      (old && renew
+        ? CB('data-b="roadnew"', '↻', 'Vernieuwen', {
+            dis: !has(renew),
+            cost: costHTML(renew, true),
+            tip: `Alle oude wegen worden ${ROADS[roadTier()].n.toLowerCase()}`,
+          })
+        : '');
+    return setHTML(p, 'ins', 'r' + i + tier + roadVersion() + (renew ? has(renew) : ''), () => {
+      const n = net ? buildingsOnStretch(i) : 0;
+      const sub = net ? 'Aan het wegennet' : 'Los van het stamhuis';
+      const line = net
+        ? `<div class="statline idle"><i class="dot"></i>Brengt ${n} ${n === 1 ? 'gebouw' : 'gebouwen'} aan de weg</div>`
+        : `<div class="statline warn"><i class="dot"></i>Leg een pad naar je andere wegen, dan telt dit stuk mee</div>`;
+      return `${head(im(iconFor('road')), ROADS[tier].n, sub)}${line}`;
+    });
+  }
   if (sel.node >= 0) {
     const i = sel.node,
       n = node[i];
@@ -410,6 +488,8 @@ export function renderInspector() {
     (d.market ? Object.values(G.res).map(Math.floor).join() : '') +
     (UPG_OK(b.type) && has(upgCost(b))) + // knop 'Verbeteren' aan of uit
     b.starved +
+    roadTierOf(b) +
+    roadSig(b) +
     b.run +
     b.blocked +
     (siteCnt.get(b.id) || 0) +
@@ -458,6 +538,7 @@ export function renderInspector() {
       if (why || busy)
         h += `<div class="statline ${why ? (calm ? 'idle' : 'warn') : ''}"><i class="dot"></i>${esc(why || busy)}</div>`;
     }
+    h += roadLine(b);
     if (d.pop) h += `<div class="stats"><span><i>${ico('⌂')}</i>${bPop(b)} inwoners</span></div>`;
     h += charmLine(b);
     if (d.def)
@@ -577,6 +658,24 @@ export function insHandler(e: MouseEvent) {
         v.keep = { k: 'node', i };
       });
     toast('Drie dorpelingen onderweg.');
+  } else if (t.dataset.b === 'road' && b) {
+    const n = buildRoadLink(b);
+    if (n) {
+      sfx('place');
+      toast(`${n} ${n === 1 ? 'stuk' : 'stukken'} pad aangelegd.`, 'good');
+    } else toast('Dit pad lukt niet vanzelf: sleep zelf een pad naar je wegen.', 'bad');
+  } else if (t.dataset.b === 'roaddel' && sel.road >= 0) {
+    const i = sel.road;
+    road[i] = 0;
+    markRoadsChanged();
+    burst((i % W) + 0.5, ((i / W) | 0) + 0.5, '#8a7a62');
+    clearSel();
+  } else if (t.dataset.b === 'roadnew') {
+    const n = renewRoads();
+    toast(
+      n ? `${n} stukken weg vernieuwd.` : 'Te weinig grondstoffen om de wegen te vernieuwen.',
+      n ? 'good' : 'bad',
+    );
   } else if (t.dataset.b === 'pump') {
     store.placing = 'oilpump';
     store.expandMode = false;

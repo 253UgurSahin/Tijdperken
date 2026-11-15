@@ -27,6 +27,8 @@ import { BOSS_DMG, BOSS_HP, bossForAge, bossName } from '../data/bosses';
 import { chargeFrac, chargePercent, nightsLeft } from '../data/finale';
 import { bossComesTonight, liveBoss } from '../game/bosses';
 import { finishedGate, gateHealth, isCharging } from '../game/finale';
+import { planRoadLink, roadLinkCost, unlinkedBuildings } from '../game/roads';
+import { LINK_MAX, offRoadEffect } from '../data/roads';
 
 export const placed = (k: string): boolean => G.bs.some(b => b.type === k);
 function bestHouse() {
@@ -351,6 +353,24 @@ export function coach(): CoachStep {
   return tip ? { ...step, h: `${step.h} ${tip.text}`, act: tip.act } : step;
 }
 
+/** Ligt er een gebouw niet aan de weg? Dan eerst een pad (met een knop die het pad meteen aanlegt). */
+function roadStep(): CoachStep | null {
+  const b = unlinkedBuildings()[0];
+  if (!b) return null;
+  const d = B[b.type],
+    name = d.n.toLowerCase(),
+    t = 'Leg een pad aan.';
+  const plan = planRoadLink(b, LINK_MAX);
+  if (!plan) return { t, h: `Sleep een pad van je wegen naar je ${name}.`, tile: 'road', act: bAct('road') };
+  // "ligt los van het dorp" past niet achter "ligt niet aan de weg en": dan alleen dat
+  const effect = offRoadEffect(d),
+    why = effect.startsWith('ligt ') ? effect : `ligt niet aan de weg en ${effect}`;
+  const cost = roadLinkCost(plan),
+    h = `Je ${name} ${why}. Een pad naar het stamhuis lost dat op.`;
+  if (!has(cost)) return { t, h: `${h} Nog ${lackText(cost)} nodig.`, wait: true };
+  return { t, h, act: { l: 'Pad aanleggen', k: 'road', id: b.id } };
+}
+
 function nextStep(): CoachStep {
   const nx = AGE_UP[G.age + 1],
     NA = nx ? theAge(G.age + 1) : '', // met lidwoord: "de bronstijd", "het dronetijdperk"
@@ -399,6 +419,8 @@ function nextStep(): CoachStep {
       if (prep) return prep;
     }
   }
+  const road = roadStep();
+  if (road) return road;
   if (G.age === 0) {
     if (!placed('hut'))
       return {

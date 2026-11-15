@@ -5,6 +5,10 @@ import { B } from '../data/buildings';
 import { charmFrom, farmBoostOf } from '../data/charm';
 import { canPlace, ghostPos, lineTiles } from '../game/placement';
 import { G } from '../game/state';
+import type { Tile } from '../types';
+import { LINK_AUTO, needsRoad, ringTiles } from '../data/roads';
+import { W, H } from '../config';
+import { onRoadNet, planRoadLink, roadVersion, unlinkedBuildings } from '../game/roads';
 import { drag, mouse } from '../input/input';
 import { quadAt, rangeAt } from './decals';
 import { isMesh } from './kit';
@@ -38,6 +42,18 @@ function ghost(type: string): T3.Group {
   S3.add(g);
   return (ghostCache[type] = g);
 }
+// Het pad dat bij het plaatsen vanzelf zou komen. Alleen opnieuw zoeken als de plek, de soort of het net verandert.
+let planKey = '',
+  planTiles: Tile[] | null = null;
+/** Het geplande pad voor een gebouw van deze soort op deze plek ([] = ligt al aan de weg, null = te ver). */
+export function ghostRoadPlan(type: string, x: number, y: number): Tile[] | null {
+  const key = `${type}/${x}/${y}/${roadVersion()}`;
+  if (key !== planKey) {
+    planKey = key;
+    planTiles = planRoadLink({ type, x, y });
+  }
+  return planTiles;
+}
 function hideGhosts(except?: string | null) {
   for (const k in ghostCache) if (k !== except) ghostCache[k].visible = false;
 }
@@ -47,6 +63,8 @@ export function drawPlacement() {
     return;
   }
   const d = B[store.placing];
+  // Een pad leggen: gebouwen die nog niet aan de weg liggen oranje, zodat je ziet waar je heen moet slepen
+  if (d.road) showUnlinked();
   if (drag && drag.mode === 'line') {
     hideGhosts();
     const budget = { ...G.res };
@@ -78,6 +96,26 @@ export function drawPlacement() {
       quadAt(gx + dx + 0.5, gy + dy + 0.5, 0.94, 0.94, err ? '#e5584a' : '#59d27a', 0.5);
   if (d.def || d.light) rangeAt(gx + s / 2, gy + s / 2, d.def ? d.def.r : d.light!, '#ffffff');
   showNeighbours(store.placing, gx, gy);
+  if (needsRoad(d) && !canPlace(store.placing, gx, gy, true)) showRoadPlan(store.placing, gx, gy);
+}
+
+/**
+ * Bij een gebouw dat een weg nodig heeft: de tegels pad die erbij komen (fel als het spel ze vanzelf legt, zacht
+ * als je ze zelf moet slepen), en groen waar het gebouw de weg al raakt.
+ */
+function showRoadPlan(type: string, gx: number, gy: number) {
+  const plan = ghostRoadPlan(type, gx, gy);
+  if (!plan) return;
+  const auto = plan.length <= LINK_AUTO;
+  for (const [x, y] of plan) quadAt(x + 0.5, y + 0.5, 0.9, 0.9, '#e0b04a', auto ? 0.55 : 0.25, 0.035);
+  for (const i of ringTiles(gx, gy, B[type].size, W, H))
+    if (onRoadNet(i)) quadAt((i % W) + 0.5, ((i / W) | 0) + 0.5, 0.9, 0.9, '#7fd65a', 0.35, 0.035);
+}
+function showUnlinked() {
+  for (const b of unlinkedBuildings()) {
+    const s = B[b.type].size;
+    quadAt(b.x + s / 2, b.y + s / 2, s + 0.1, s + 0.1, '#e0a63a', 0.4, 0.04);
+  }
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { Cost, Tile } from '../types';
+import type { Building, Cost, Tile } from '../types';
 // Gebouwen plaatsen en nieuw gebied kopen.
 import { store } from '../core/store';
 import { sfx } from '../audio/sound';
@@ -16,6 +16,16 @@ import { ruleAllowsBuilding } from './mods';
 import { roadTier } from './upgrades';
 import { landOwner } from './rivals';
 import { canDemolish, wonderBlocked } from './wonders';
+import {
+  buildRoadLink,
+  markRoadsChanged,
+  planRoadLink,
+  roadLinkCost,
+  roadLinked,
+  updateRoadNet,
+} from './roads';
+import { LINK_AUTO, needsRoad } from '../data/roads';
+import { markTip, tipSeen } from '../core/tips';
 import { mouse } from '../input/input';
 import { resetV, selVills } from '../input/selection';
 import { fmt } from '../ui/format';
@@ -136,6 +146,21 @@ export function lineTiles(a: Tile, b: Tile): Tile[] {
   for (let y = a[1] + sy; y !== b[1] + sy && a[1] !== b[1]; y += sy) t.push([b[0], y]);
   return t.slice(0, 60);
 }
+/**
+ * Leg één tegel weg aan op plek i, in de wegsoort van nu. Een boom of struik in de weg wordt gekapt (refund: dat
+ * levert wat hout of voedsel op), een steen of zand geruimd. Roep daarna markRoadsChanged() aan.
+ */
+export function layRoadTile(i: number, refund: boolean): void {
+  if (node[i] && CLEAR.has(NODES[node[i]].k)) {
+    const k = NODES[node[i]].k;
+    if (refund && k === 'tree') G.res.wood += 5;
+    else if (refund && k === 'bush') G.res.food += 2;
+    node[i] = 0;
+    amt[i] = 0;
+    fxRing((i % W) + 0.5, ((i / W) | 0) + 0.5, '#9c6b3c');
+  }
+  road[i] = roadTier();
+}
 export function placeLine(a: Tile, b: Tile) {
   const d = B[store.placing!];
   let n = 0,
@@ -149,25 +174,15 @@ export function placeLine(a: Tile, b: Tile) {
     }
     pay(buildCost(store.placing!));
     n++;
-    if (d.road) {
-      const i = y * W + x;
-      // Een boom of struik in de weg wordt gekapt (en levert wat hout op), een steen of zand geruimd
-      if (node[i] && CLEAR.has(NODES[node[i]].k)) {
-        const k = NODES[node[i]].k;
-        if (k === 'tree') G.res.wood += 5;
-        else if (k === 'bush') G.res.food += 2;
-        node[i] = 0;
-        amt[i] = 0;
-        fxRing(x + 0.5, y + 0.5, '#9c6b3c');
-      }
-      road[i] = roadTier();
-    } else {
+    if (d.road) layRoadTile(y * W + x, true);
+    else {
       const nb = placeBuilding(store.placing!, x, y, false);
       first = first || nb;
     }
   }
   if (n) {
     sfx('place');
+    if (d.road) markRoadsChanged();
     if (first)
       for (const v of selVills()) {
         resetV(v);
@@ -201,11 +216,34 @@ export function tryPlace(keep?: boolean) {
     v.job = 'build';
     v.prefSite = b;
   }
-  toast(`${B[store.placing!].n} uitgezet. Dorpelingen komen het bouwen.`);
+  toast(roadToast(b) || `${B[store.placing!].n} uitgezet. Dorpelingen komen het bouwen.`);
   if (!keep) store.placing = null;
   store.uiDirty = true;
 }
 
+/**
+ * Een nieuw gebouw dat een weg nodig heeft: een kort pad (hooguit LINK_AUTO tegels) legt het spel vanzelf aan.
+ * Geeft de melding daarover, of '' als er niets over de weg te zeggen is. Plaatsen weigeren we nooit om een weg.
+ */
+function roadToast(b: Building): string {
+  const d = B[b.type];
+  if (!needsRoad(d)) return '';
+  updateRoadNet();
+  const plan = planRoadLink(b, LINK_AUTO);
+  if (plan && plan.length && has(roadLinkCost(plan))) {
+    const n = buildRoadLink(b, false, LINK_AUTO);
+    if (n) return `${d.n} uitgezet, met ${n} ${n === 1 ? 'stuk' : 'stukken'} pad naar de weg.`;
+  }
+  if (roadLinked(b)) return '';
+  if (!tipSeen('road')) {
+    markTip('road');
+    toast(
+      'Tip: gebouwen werken pas goed als ze aan een weg naar het stamhuis liggen. Zonder weg werken ze maar op een derde en brengt niemand iets naar een opslag. Sleep een pad, of tik op het gebouw en kies Pad aanleggen.',
+      'good',
+    );
+  }
+  return `${d.n} uitgezet, maar nog niet aan de weg: leg een pad aan.`;
+}
 /**
  * Sloopmodus: alle paden en muren op de lijn van tegel a naar tegel b weghalen (gebouwen niet: die breek je
  * met een klik af, zodat je er niet per ongeluk een meesleept). Geeft hoeveel er weg is.
@@ -225,6 +263,9 @@ export function demolishLine(a: Tile, b: Tile): number {
       n++;
     }
   }
-  if (n) sfx('boom');
+  if (n) {
+    sfx('boom');
+    markRoadsChanged();
+  }
   return n;
 }
