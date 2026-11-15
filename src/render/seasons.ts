@@ -1,4 +1,4 @@
-// De seizoenen in beeld: de kleur van bomen, gras en grond, sneeuw, lentebloesem en gevallen blad. Een nieuw
+// De seizoenen in beeld: de kleur van bomen, gras en grond, sneeuw, lentebloesem, gevallen blad en natte grond. Een nieuw
 // seizoen komt niet ineens: het loopt zacht in tijdens de laatste nacht van het oude (zie seasonBlend).
 import * as T3 from 'three';
 import { store } from '../core/store';
@@ -8,7 +8,7 @@ import { G } from '../game/state';
 import { BLOSSOM, FOL } from './nodes';
 import { setScatterLook } from './scatter';
 import { TMAT } from './terrain';
-import { LEAF_LITTER, SNOW_COVER } from './weather';
+import { LEAF_LITTER, RAIN_WET, SNOW_COVER, stepWetGround } from './weather';
 
 /** Hoe één seizoen eruitziet. */
 interface SeasonLook {
@@ -27,7 +27,8 @@ interface SeasonLook {
 }
 const GREEN = { oak: '#4f8a3c', birch: '#8fbf5a', pine: '#3f6b3f', pine2: '#4a7a45', bush: '#4d7d38' };
 // Lente, zomer, herfst en winter (in de volgorde van seasonIndex)
-const SPRING = 0;
+const SPRING = 0,
+  WINTER = 3;
 const LOOKS: SeasonLook[] = [
   { leaves: GREEN, ground: '#ffffff', grass: '#ffffff', straw: 0, flowers: 2.5, snow: 0, litter: 0 },
   { leaves: GREEN, ground: '#fff6dc', grass: '#f4f0d8', straw: 0, flowers: 1, snow: 0, litter: 0 },
@@ -105,7 +106,10 @@ export function applySeason(): void {
   lastGame = G;
   lastTM = store.TM;
   lastHours = hours;
+  // Regen maakt de grond nat; in de winter is G.rain sneeuw, dan blijft het droog (zie weather.ts)
+  const winter = now === WINTER;
   if (jump) {
+    RAIN_WET.value = G.rain && !winter ? 1 : 0;
     SNOW_COVER.value = snowWant;
     LEAF_LITTER.value = litterWant;
     setBlossom(now, next, t);
@@ -113,6 +117,7 @@ export function applySeason(): void {
   }
   // (1 - e^(-dt/tijd): even snel bij 30 en bij 120 beeldjes per seconde)
   const k = 1 - Math.exp((-dt * Math.max(1, G.speed)) / EASE_TIME);
+  stepWetGround(dt * Math.max(1, G.speed), !!G.rain, winter);
   SNOW_COVER.value += (snowWant - SNOW_COVER.value) * k;
   LEAF_LITTER.value += (litterWant - LEAF_LITTER.value) * k;
   setBlossom(now, next, t);

@@ -3,7 +3,7 @@ import * as T3 from 'three';
 import { TAU } from '../config';
 import { hash2 } from '../util/random';
 import { litShares } from './nightclock';
-import { addSnow } from './weather';
+import { RAIN_WET, addSnow } from './weather';
 
 export { lampSwitchAt, litShares } from './nightclock';
 
@@ -121,6 +121,22 @@ VCMAT_B.onBeforeCompile = shader => {
         diffuseColor.rgb *= (1.0 - 0.3 * seam) * (1.0 + (grain - 0.6) * 0.5 * fade);
       }`,
     );
+  // Regen: bovenkanten (daken, akkers) worden wat donkerder en glanzender. Na normal_fragment_maps, want pas dan
+  // is de richting van het vlak bekend; de belichting leest roughnessFactor daarna. Alleen in de wereld (nevel):
+  // pictogrammen in het bouwmenu blijven droog.
+  shader.uniforms.uRainWet = RAIN_WET;
+  shader.fragmentShader = ('uniform float uRainWet;\n' + shader.fragmentShader).replace(
+    '#include <normal_fragment_maps>',
+    `#include <normal_fragment_maps>
+    #ifdef USE_FOG
+      if (uRainWet > 0.001) {
+        float wetUp = inverseTransformDirection(normal, viewMatrix).y;
+        float wetRoof = uRainWet * smoothstep(0.3, 0.7, wetUp);
+        diffuseColor.rgb *= 1.0 - 0.15 * wetRoof;
+        roughnessFactor = mix(roughnessFactor, 0.45, wetRoof);
+      }
+    #endif`,
+  );
   // In de winter sneeuw op daken, akkers, plinten en wonderen (alleen dit materiaal: figuren, ramen, glas en
   // gloeiende delen blijven schoon). De korrel van hierboven maakt de rand van de sneeuw grillig.
   addSnow(shader, { lo: 0.45, hi: 0.72, max: 0.9, blotch: 'snowGrain * 0.5' });

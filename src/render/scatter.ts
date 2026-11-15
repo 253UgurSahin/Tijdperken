@@ -11,6 +11,7 @@ import { groundVersion } from './terrainlook';
 import { BIOME, TER, biome, bmap, ground, node, road, ter } from '../world/world';
 import { settled } from '../game/rivals';
 import { SNOW_COVER, WIND_GUST } from './weather';
+import { wearAt, wearVersion } from './wear';
 
 // Ligt er water direct naast deze tegel (boven, onder, links of rechts)?
 function nextToWater(x: number, y: number): boolean {
@@ -167,7 +168,7 @@ export function setScatterLook(tint: T3.Color, strawAmount: number, flowers: num
   flowersOn = flowers > 0;
   placed.r = -1; // opnieuw neerzetten, met de nieuwe kleuren en het nieuwe aantal bloemen
 }
-const placed = { x: 0, y: 0, r: -1, version: -1, age: -1 };
+const placed = { x: 0, y: 0, r: -1, version: -1, wear: -1, age: -1 };
 const _m = new T3.Matrix4(),
   _q = new T3.Quaternion(),
   _p = new T3.Vector3(),
@@ -203,6 +204,7 @@ export function updateScatter() {
     moved < R * 0.2 &&
     Math.abs(R - placed.r) < R * 0.15 &&
     placed.version === groundVersion &&
+    placed.wear === wearVersion &&
     placed.age === G.age
   )
     return;
@@ -210,6 +212,7 @@ export function updateScatter() {
   placed.y = cam.y;
   placed.r = R;
   placed.version = groundVersion;
+  placed.wear = wearVersion;
   placed.age = G.age;
   const thin = density * Math.min(1, 30 / d),
     n: Record<string, number> = { tuft: 0, flower: 0, pebble: 0 },
@@ -231,8 +234,11 @@ export function updateScatter() {
       // Rand van het gebied: kleiner, zodat er geen harde grens te zien is
       const edge = Math.min(1, (R - dist) / (R * 0.25)),
         locked = !settled(x, y),
-        busy = node[i] ? 0.5 : 1; // rond een boom of rots wat minder
+        busy = node[i] ? 0.5 : 1, // rond een boom of rots wat minder
+        // Platgelopen (erf of paadje, zie wear.ts): daar groeit geen gras en bloeit niets, steentjes blijven
+        trodden = wearAt(x, y) > 0.45;
       for (const kind of ['tuft', 'flower', 'pebble']) {
+        if (trodden && kind !== 'pebble') continue;
         let want = per[kind] * thin * busy;
         if (kind === 'tuft' && t === TER.ROCK) want *= 0.3;
         // In de winter ligt de helft onder de sneeuw: dan steken er maar een paar sprieten uit

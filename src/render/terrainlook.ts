@@ -1,6 +1,6 @@
 // Hoe de grond eruitziet: fijne details (gras, korrels, steentjes), rotswanden en sneeuw op de
 // bergen, natte oevers en zachte schaduw rond gebouwen en onder bomen. In de winter sneeuw over het
-// land en in de herfst blad rond de bomen. Dit gebeurt in de videokaart, bovenop de kleur per tegel
+// land en in de herfst blad rond de bomen. Platgelopen paadjes en erven (wear.ts), en natte grond met plassen bij regen. Dit gebeurt in de videokaart, bovenop de kleur per tegel
 // uit terrain.ts.
 import type { Building } from '../types';
 import * as T3 from 'three';
@@ -11,7 +11,8 @@ import { G } from '../game/state';
 import { DETAIL } from './textures';
 import { R3 } from './scene';
 import { WMAT } from './water';
-import { LEAF_LITTER, SNOW_COVER } from './weather';
+import { LEAF_LITTER, RAIN_WET, SNOW_COVER } from './weather';
+import { WEAR, rebuildYards, stepWear } from './wear';
 import { bmap, node } from '../world/world';
 
 // (staat nu in weather.ts; hier nog doorgegeven voor wie hem uit dit bestand haalt)
@@ -103,6 +104,7 @@ function putTile(x: number, y: number, v: number) {
  * heightOf(b) geeft de hoogte van het 3D-model van gebouw b (lage velden geven weinig schaduw).
  */
 export function updateGroundShade(now: number, heightOf: (b: Building) => number | undefined) {
+  stepWear(now); // platgelopen grond (elk beeldje, los van de schaduw)
   if (todo.x1 < todo.x0 || now - shadeTime < 0.3) return;
   shadeTime = now;
   const x0 = Math.max(0, todo.x0),
@@ -111,6 +113,8 @@ export function updateGroundShade(now: number, heightOf: (b: Building) => number
     y1 = Math.min(H - 1, todo.y1);
   todo.x1 = -1; // weer leeg
   if (x1 < x0 || y1 < y0) return;
+  // De erven ook: die reiken tot 2 tegels buiten een gebouw, dus een wat groter stuk
+  rebuildYards(x0 - 2, y0 - 2, x1 + 2, y1 + 2);
   // 1. De schaduw op die tegels zelf: eerst leeg, dan bomen, rotsen en gebouwen erin
   for (let sy = y0 * SH; sy < (y1 + 1) * SH; sy++)
     raw.fill(0, (sy + 1) * RW + x0 * SH + 1, (sy + 1) * RW + (x1 + 1) * SH + 1);
@@ -172,6 +176,8 @@ export function dressTerrain(mat: T3.MeshStandardMaterial) {
     shader.uniforms.uMapSize = MAP_SIZE;
     shader.uniforms.uSnowCover = SNOW_COVER;
     shader.uniforms.uAutumn = LEAF_LITTER;
+    shader.uniforms.uWear = WEAR;
+    shader.uniforms.uRainWet = RAIN_WET;
     shader.vertexShader =
       'varying vec3 vWPos;\nvarying vec3 vWNrm;\n' +
       shader.vertexShader.replace(
@@ -181,14 +187,18 @@ export function dressTerrain(mat: T3.MeshStandardMaterial) {
         vWNrm = normalize(mat3(modelMatrix) * objectNormal);`,
       );
     shader.fragmentShader =
-      'uniform sampler2D uDetail;\nuniform sampler2D uShade;\nuniform vec2 uMapSize;\nuniform float uSnowCover;\nuniform float uAutumn;\n' +
+      'uniform sampler2D uDetail;\nuniform sampler2D uShade;\nuniform sampler2D uWear;\nuniform vec2 uMapSize;\n' +
+      'uniform float uSnowCover;\nuniform float uAutumn;\nuniform float uRainWet;\n' +
       'varying vec3 vWPos;\nvarying vec3 vWNrm;\n' +
       shader.fragmentShader
         .replace('#include <map_fragment>', '#include <map_fragment>\n' + GROUND_COLOR)
         .replace(
           '#include <roughnessmap_fragment>',
           `#include <roughnessmap_fragment>
-          roughnessFactor = mix(roughnessFactor, 0.4, wet);`,
+          roughnessFactor = mix(roughnessFactor, 0.4, wet);
+          // Nat van de regen wat glanzender, en plassen spiegelen (een glinstering als de zon even doorbreekt)
+          roughnessFactor = mix(roughnessFactor, 0.55, rainWet * 0.6);
+          roughnessFactor = mix(roughnessFactor, 0.12, puddle);`,
         )
         .replace(
           '#include <normal_fragment_begin>',
@@ -239,6 +249,11 @@ const GROUND_COLOR = `
   float strata = 0.9 + 0.1 * sin(vWPos.y * 8.0 + rockTex * 4.0);
   vec3 rockCol = mix(vec3(0.46, 0.43, 0.4), vec3(0.72, 0.68, 0.62), rockTex) * strata * diffuse;
   col = mix(col, rockCol, steep);
+  // Platgelopen: aangestampte aarde rond gebouwen en paadjes waar vaak gelopen wordt (zie wear.ts). De rand
+  // rafelt met de korrel van de grond, zodat een pad geen strakke streep wordt. Niet op rotswanden.
+  float trod = smoothstep(0.3, 0.65, texture2D(uWear, wp / uMapSize).r + (dA.g - 0.5) * 0.45)
+    * (grassW + soilW * 0.4) * (1.0 - steep);
+  col = mix(col, vec3(0.46, 0.38, 0.27) * (0.82 + dA.g * 0.36) * (0.93 + macro * 0.14), trod * 0.85);
   // Sneeuw op hoge, vlakke stukken
   float snow = smoothstep(3.4, 4.4, vWPos.y + dA.b * 0.8) * smoothstep(0.6, 0.78, vWNrm.y);
   col = mix(col, vec3(0.88, 0.91, 0.95) * (0.95 + dA.g * 0.08), snow);
@@ -248,16 +263,21 @@ const GROUND_COLOR = `
   // (een boom zelf geeft 0,42); onder hoge gebouwen is hij donkerder, daar komt geen blad.
   // (Alleen als er blad ligt: buiten de herfst slaat de videokaart dit hele stuk over.)
   if (uAutumn > 0.001) {
-    float litter = uAutumn * grassW * smoothstep(0.08, 0.2, shade) * (1.0 - smoothstep(0.46, 0.58, shade))
+    float litter = (1.0 - trod) * uAutumn * grassW * smoothstep(0.08, 0.2, shade) * (1.0 - smoothstep(0.46, 0.58, shade))
       * smoothstep(0.5, 0.64, dA.r * 0.7 + macro * 0.3);
     vec3 leafCol = mix(vec3(0.62, 0.27, 0.07), vec3(0.84, 0.56, 0.14), dA.g);
     col = mix(col, leafCol * (0.85 + macro * 0.3), litter * 0.85);
   }
   // Winter: sneeuw over het hele land. Hoe meer sneeuw, hoe lager de drempel: eerst plekken, dan bijna alles
-  // (tot 90% wit, zodat de grond er nog net doorheen schemert). Niet op de oever (die zakt onder het land).
+  // (tot 90% wit, zodat de grond er nog net doorheen schemert). Bij weinig sneeuw niet op de oever; als alles wit
+  // is wel, tot aan het ijs.
   if (uSnowCover > 0.001) {
     float cover = smoothstep(0.5 - uSnowCover * 0.3, 0.56 - uSnowCover * 0.3, macro * 0.6 + dA.g * 0.4)
-      * uSnowCover * smoothstep(0.55, 0.8, vWNrm.y) * smoothstep(-0.12, -0.03, vWPos.y);
+      * uSnowCover * smoothstep(0.55, 0.8, vWNrm.y)
+      // Tot aan het ijs: anders blijft de oever kaal en donker als een rand om een bevroren meer
+      * mix(smoothstep(-0.12, -0.03, vWPos.y), smoothstep(-0.2, -0.17, vWPos.y), uSnowCover);
+    // Platgelopen paadjes schemeren grijsbruin door de sneeuw heen
+    cover *= 1.0 - trod * 0.6;
     // Op wegen en de randen van gebieden blijft weinig liggen, zodat je ze blijft zien (en ze zijn wat donkerder:
     // nat en platgelopen). Herkend aan de kleur van de grond zonder het seizoensfilter van het materiaal (dat maakt
     // in de winter alles blauwgroener). Elke soort weg heeft een eigen kenmerk, zodat zand en kale plekken in de
@@ -286,10 +306,31 @@ const GROUND_COLOR = `
     float wild = (1.0 - smoothstep(0.08, 0.13, spread)) * (1.0 - smoothstep(0.35, 0.5, paintLum));
     vec3 snowCol = vec3(0.86, 0.9, 0.97) * mix(clamp(0.6 + paintLum * 1.2, 0.85, 1.0), 0.72, wild)
       * (0.93 + (dA.g * 0.6 + dB.g * 0.4) * 0.07 + macro * 0.06);
+    // Op de oeverstrook vlak boven het ijs een tikje blauwgrijs, zodat de rand van het ijs als oever leest en niet
+    // als een harde witte trede
+    snowCol = mix(snowCol, vec3(0.7, 0.77, 0.86) * snowCol.b, (1.0 - smoothstep(-0.13, -0.04, vWPos.y)) * 0.45);
     col = mix(col, snowCol, cover * 0.9);
   }
-  // Natte oever: vlak bij het water is de grond donkerder (en glanst een beetje)
-  float wet = smoothstep(0.0, -0.14, vWPos.y);
+  // Regen: de grond wordt donker en nat (aarde en steen meer dan gras), alleen bovenop en niet op sneeuw
+  float rainWet = uRainWet * smoothstep(0.55, 0.8, vWNrm.y) * (1.0 - snowW);
+  col *= 1.0 - rainWet * (0.1 * grassW + 0.2 * (soilW + stoneW));
+  // Plassen in de kuiltjes van kale grond, wegen en paadjes (niet in het gras; niet op "laag")
+  float puddle = 0.0;
+  #ifdef FINE_DETAIL
+    if (rainWet > 0.001) {
+      // Kuiltjes: een zachte vlekkenruis van zo'n tegel groot (de grove laag van het detailplaatje, kleiner gezet)
+      float hollow = texture2D(uDetail, wp * 0.23 + vec2(0.13, 0.71)).a * 0.75 + macro * 0.25;
+      float puddleWhere = rainWet * (1.0 - grassW * (1.0 - trod));
+      puddle = puddleWhere * smoothstep(0.47, 0.44, hollow);
+      // Een donkere natte rand, en in de plas zelf de grijsblauwe lucht (er is geen echte spiegeling)
+      float rim = puddleWhere * smoothstep(0.51, 0.47, hollow) - puddle;
+      col *= 1.0 - rim * 0.3;
+      col = mix(col, vec3(0.36, 0.41, 0.47) * (0.9 + dB.r * 0.2), puddle * 0.75);
+    }
+  #endif
+  // Natte oever: vlak bij het water is de grond donkerder (en glanst een beetje). In de winter niet: dan ligt
+  // daar sneeuw tot aan het ijs.
+  float wet = smoothstep(0.0, -0.14, vWPos.y) * (1.0 - uSnowCover);
   col *= 1.0 - wet * 0.3;
   col *= 1.0 - shade * 0.55;
   diffuseColor.rgb = col;
