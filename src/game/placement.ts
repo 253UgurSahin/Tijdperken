@@ -34,6 +34,7 @@ import { demolish } from '../ui/inspector';
 import { TER, amt, bmap, inb, isUnl, node, nodeVis, road, ter } from '../world/world';
 import { SUCCESSOR, canMake } from '../data/succession';
 import { chunkCostFor } from '../data/economy';
+import { noteSupply } from './carts';
 
 /** Wat een gebouw nu kost. Muren en poorten worden goedkoper door bonussen (zoals 'wall.cost'). */
 export function buildCost(type: string): Cost {
@@ -179,6 +180,7 @@ export function placeLine(a: Tile, b: Tile) {
     else {
       const nb = placeBuilding(store.placing!, x, y, false);
       first = first || nb;
+      if (!d.wall) noteSupply(nb, buildCost(store.placing!)); // ook bij een hele rij: karren met bouwstof
     }
   }
   if (n) {
@@ -218,6 +220,7 @@ export function tryPlace(keep?: boolean) {
     v.prefSite = b;
   }
   toast(roadToast(b) || `${B[store.placing!].n} uitgezet. Dorpelingen komen het bouwen.`);
+  noteSupply(b, buildCost(store.placing!)); // een kar met bouwstof rijdt erheen (alleen om te zien)
   if (!keep) store.placing = null;
   store.uiDirty = true;
 }

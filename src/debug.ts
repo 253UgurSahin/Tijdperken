@@ -86,6 +86,9 @@ interface DevTools {
   armyUI?: typeof armyUI;
   /** Geeft soldaat u meteen n overwinningen (standaard 3) en geeft hem terug. */
   kills?: (u: Unit, n?: number) => Unit;
+  carts?: typeof carts;
+  /** n karren tussen willekeurige gebouwen aan de weg (om te meten en voor plaatjes); geeft hoeveel er rijden. */
+  cartStress?: (n: number) => number;
   cinematic?: typeof cinematic;
   /** Het filmische moment van een nieuw tijdperk, zonder echt een tijdperk verder te gaan. */
   cine?: () => void;
@@ -299,6 +302,10 @@ window.__tp.kills = (u, n = 3) => {
   for (let k = 0; k < n; k++) army.creditKill(u);
   return u;
 };
+// Karren op de weg: __tp.carts.carts (wat er rijdt), __tp.cartStress(300) (veel karren tegelijk, om te meten)
+import * as carts from './game/carts';
+window.__tp.carts = carts;
+window.__tp.cartStress = n => carts.cartStress(n);
 // Juice en opslagplekken: het filmische moment van een nieuw tijdperk zonder echt een tijdperk verder te gaan
 // (__tp.cine()), vuurwerk (__tp.fireworks()), een treffer op het stamhuis (__tp.hallHit()), of de plekken bekijken
 // (__tp.saves.listSlots()) en opslaan op een plek (__tp.saves.saveToSlot('2'))

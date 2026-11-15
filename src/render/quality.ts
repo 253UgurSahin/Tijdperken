@@ -12,6 +12,7 @@ import { setNodeDetail } from './nodes';
 import { precompileNightShaders } from './lighting';
 import { G } from '../game/state';
 import { darkness } from '../game/time';
+import { CART_CAP } from '../data/carts';
 
 /** Eén kwaliteitsstand: naam, resolutie-factor, maximum aantal pixels, schaduwen en nabewerking. */
 interface QualityLevel extends PostSettings {
@@ -27,6 +28,8 @@ interface QualityLevel extends PostSettings {
   fine: boolean;
   /** Hoeveel lampen 's nachts echt licht geven (de lichtvlekken op de grond zijn er altijd). */
   lamps: number;
+  /** Hooguit zo veel karren en dragers tegelijk op de weg (zie game/carts.ts). */
+  carts: number;
 }
 export const LEVELS: Record<string, QualityLevel> = {
   low: {
@@ -42,6 +45,7 @@ export const LEVELS: Record<string, QualityLevel> = {
     scatter: 0, // geen grassprieten en steentjes
     fine: false, // eenvoudiger grond, water, bomen en bergen
     lamps: 0, // een nacht kost dan net zoveel als een dag
+    carts: CART_CAP.low,
   },
   mid: {
     name: 'Middel',
@@ -55,6 +59,7 @@ export const LEVELS: Record<string, QualityLevel> = {
     scatter: 0.5,
     fine: true,
     lamps: 3,
+    carts: CART_CAP.mid,
   },
   high: {
     name: 'Hoog',
@@ -72,6 +77,7 @@ export const LEVELS: Record<string, QualityLevel> = {
     scatter: 1,
     fine: true,
     lamps: 6,
+    carts: CART_CAP.high,
   },
 };
 const ORDER = ['low', 'mid', 'high'];
@@ -130,6 +136,7 @@ function customLevel(): QualityLevel {
     scatter: g.shadows ? 1 : 0.5,
     fine: (g.scale || 1) >= 0.8,
     lamps: g.shadows ? 6 : 3,
+    carts: CART_CAP.mid,
   };
 }
 
@@ -167,6 +174,11 @@ function apply(name: string, later?: boolean) {
   lampCount = L.lamps;
   if (later) requestResize();
   else resize();
+}
+
+/** Hoeveel karren er tegelijk mogen rijden bij de beeldkwaliteit van nu. */
+export function qualityCarts(): number {
+  return (level === 'custom' ? customLevel() : LEVELS[level] || LEVELS.mid).carts;
 }
 
 /** Kies de kwaliteit uit de instelling (bij opstarten en als de speler hem verandert). */

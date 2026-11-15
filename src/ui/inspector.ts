@@ -53,6 +53,7 @@ import { road } from '../world/world';
 import { formationMove, unitRank, veteranMul } from '../game/army';
 import { chevronsHTML, formationLineHTML, rankLineHTML } from './army';
 import { unhide } from '../game/villagers';
+import { flowRoute } from '../game/carts';
 import { clearSel, resetV, selUnits, selVills } from '../input/selection';
 import { centerOn } from '../render/camera';
 import { selectArmy, selectIdle } from '../input/input';
@@ -587,6 +588,7 @@ export function renderInspector() {
       const calm = !b.on || !!b.plenty || !!b.saving || (!!d.gen && (!!d.gen.solar || powerSup >= powerDem));
       if (why || busy)
         h += `<div class="statline ${why ? (calm ? 'idle' : 'warn') : ''}"><i class="dot"></i>${esc(why || busy)}</div>`;
+      h += flowLine(b);
     }
     h += roadLine(b);
     if (d.pop) h += `<div class="stats"><span><i>${ico('⌂')}</i>${bPop(b)} inwoners</span></div>`;
@@ -657,6 +659,30 @@ function builderLine(b: Building): string {
   if (n) return `${n} ${n === 1 ? 'bouwer' : 'bouwers'} aan het werk`;
   if (isNight()) return "Bouwers rusten 's nachts. Bij licht (kampvuur, lantaarn) werken ze door.";
   return 'Nog geen bouwers: stuur er een paar heen';
+}
+// Waar de karren van deze fabriek, pomp of centrale heen rijden: wat ze ophalen en wat ze terugbrengen
+function flowLine(b: Building): string {
+  const d = B[b.type],
+    flow = flowRoute(b);
+  if (!flow) return ''; // niet aan de weg: dat zegt roadLine al
+  const names = (c: Record<string, number>) =>
+    Object.keys(c)
+      .filter(k => RES[k])
+      .map(k => RES[k].n.toLowerCase());
+  const list = (n: string[]) => (n.length > 1 ? n.slice(0, -1).join(', ') + ' en ' + n[n.length - 1] : n[0]);
+  const ins = names(d.conv ? d.conv.in : d.gen && d.gen.in ? d.gen.in : {}),
+    outs = names(d.conv ? d.conv.out : d.pump ? { [d.pump.res]: 1 } : {});
+  const where = B[flow.drop.type].n.toLowerCase(),
+    tiles = `${flow.tiles} ${flow.tiles === 1 ? 'tegel' : 'tegels'}`;
+  const parts: string[] = [];
+  if (ins.length)
+    parts.push(`Haalt ${list(ins)} uit ${where === 'stamhuis' ? 'het' : 'de'} ${where} (${tiles})`);
+  if (outs.length)
+    parts.push(
+      `${ins.length ? 'brengt' : 'Brengt'} ${list(outs)} naar ${where === 'stamhuis' ? 'het' : 'de'} ${where}${ins.length ? '' : ` (${tiles})`}`,
+    );
+  if (!parts.length) return '';
+  return `<div class="statline idle"><i class="dot"></i>${esc(parts.join(' · '))}</div>`;
 }
 export function insHandler(e: MouseEvent) {
   const t = (e.target as HTMLElement).closest('button');

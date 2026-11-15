@@ -27,6 +27,7 @@ import { drawOverlay } from './overlay';
 
 import { bRec, cRec, checkWorld, eRec, syncBuildings, syncCamps, syncEntities } from './sync';
 import { rbRec, syncRivalBuildings } from './rivals3d';
+import { syncCarts } from './carts';
 import { rbById, rivalById } from '../game/rivals';
 import { inb } from '../world/world';
 import { renderFrame } from './post';
@@ -85,6 +86,7 @@ export function render() {
   poolsBegin();
   syncBuildings();
   syncEntities();
+  syncCarts();
   syncCamps();
   syncRivalBuildings();
   updateGroundShade(store.TM, b => bRec.get(b.id)?.h);
