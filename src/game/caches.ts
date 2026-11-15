@@ -15,6 +15,7 @@ import { mul } from './bonus';
 import { bLight, bRate } from './upgrades';
 import { dist } from '../util/math';
 import { updateCharm } from './charm';
+import { updateCoverage } from './coverage';
 import { amt, claims, isUnl, node, nodeLists } from '../world/world';
 
 /** Een centrale gaat aan of uit: de voorraad stroom meteen bijwerken, zodat de volgende centrale dat ook ziet. */
@@ -77,6 +78,7 @@ export function computeCaches(): void {
   if (hall) powerSup += basePower(G.age);
   powerRatio = powerDem ? Math.min(1, powerSup / powerDem) : 1;
   updateCharm(); // sfeer van huizen en hulp voor akkers (zie game/charm.ts)
+  updateCoverage(); // welke tegels binnen bereik van voorzieningen liggen (zie game/coverage.ts)
   lights = [];
   for (const b of G.bs) {
     if (!b.done) continue;

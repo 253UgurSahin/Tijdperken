@@ -23,4 +23,5 @@
 @import './juice.css';
 @import './together.css';
 @import './pro.css'; /* het strakke ontwerp: na alle onderdelen, zodat het overal geldt */
+@import './services.css'; /* bereik van voorzieningen in het infopaneel */
 @import './settings.css'; /* als laatste: de grootte-instelling moet boven de rest winnen */

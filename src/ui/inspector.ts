@@ -58,6 +58,8 @@ import { isNight } from '../game/time';
 import { charmOf, farmBoostFor, tierOf } from '../game/charm';
 import { charmFrom } from '../data/charm';
 import { charmText } from './buildmenu';
+import { SERVICES, servicesOf, servicesUnlocked } from '../data/services';
+import { coverVersion, homesCoveredBy, isHome, servicesAt } from '../game/coverage';
 
 /**
  * Wat de sfeer met dit gebouw doet: bij een huis hoe gezellig het is, bij versiering of een fabriek hoeveel
@@ -84,7 +86,7 @@ function charmLine(b: Building): string {
   if (!d.charm) return '';
   const homes = G.bs.filter(h => h.done && B[h.type].pop && charmFrom(B, b, h) !== 0).length;
   const who = homes === 1 ? '1 huis' : `${homes} huizen`;
-  return `<div class="statline charm ${d.charm.v > 0 ? 'cosy' : 'grim'}"><i class="dot"></i>${charmText(b.type)} · raakt ${who}</div>`;
+  return `<div class="statline charm ${d.charm.v > 0 ? 'cosy' : 'grim'}"><i class="dot"></i>${charmText(b.type, false)} · raakt ${who}</div>`;
 }
 import { canDemolish, noDemolishText, ownerLine, refreshWonders, wonderStatus } from '../game/wonders';
 
@@ -121,6 +123,43 @@ export const CB = (data: string, glyph: string, label: string, o: CmdOpts = {}):
 // Selectiepaneel met de knoppen die bij de selectie horen
 export let selCmds: string | null = null,
   selCtx = '';
+/**
+ * Voorzieningen (zie data/services.ts): bij een gebouw met een bereik wat het geeft en hoeveel huizen het
+ * raakt, bij een huis welke voorzieningen het wel en niet bereiken. Leeg als het er niets mee te maken heeft.
+ */
+function serviceLine(b: Building): string {
+  if (!b.done) return '';
+  const d = B[b.type];
+  let h = '';
+  if (isHome(b)) {
+    const here = servicesAt(b);
+    let missing = '';
+    const chips = servicesUnlocked(G.age).map(k => {
+      const s = SERVICES.find(x => x.k === k)!,
+        ok = here.includes(k);
+      if (!ok && !missing) missing = k;
+      return `<span class="svc ${ok ? 'ok' : 'no'}" title="${esc(ok ? s.n : `Geen ${s.n.toLowerCase()}: bouw ${s.need} in de buurt`)}">${ico(ok ? '✓' : '✕')}${s.n}</span>`;
+    });
+    const show = missing
+      ? `<button class="svcbtn${store.coverView === missing ? ' on' : ''}" data-b="cover" data-k="${missing}">Toon</button>`
+      : '';
+    return `<div class="svcchips">${chips.join('')}${show}</div>`;
+  }
+  const homes = homesCoveredBy(b),
+    who = homes === 1 ? '1 huis' : `${homes} huizen`;
+  for (const s of servicesOf(d)) {
+    const def = SERVICES.find(x => x.k === s.k)!;
+    if (def.age > G.age) continue;
+    h += `<div class="statline svcline" style="--svc:${def.c}"><i class="dot"></i><span>${def.n} voor huizen binnen ${fmtDec(s.r)} tegels · ${who}</span><button class="svcbtn${store.coverView === s.k ? ' on' : ''}" data-b="cover" data-k="${s.k}">Toon bereik</button></div>`;
+  }
+  return h;
+}
+/** Wat er in serviceLine verandert: een andere cirkel ergens, de knop, of een huis erbij. */
+function coverSig(b: Building): string {
+  const d = B[b.type];
+  if (!isHome(b) && !servicesOf(d).length) return '';
+  return `|${store.coverView}${coverVersion()}${isHome(b) ? '' : homesCoveredBy(b)}`;
+}
 // Kop van het paneel bij soldaten: één met zijn rangstreepjes, "3 × Speerdrager" of (gemengd) "Leger"
 function armyTitle(us: Unit[], oneKind: boolean): string {
   const name = UNITS[us[0].k].n;
@@ -416,7 +455,8 @@ export function renderInspector() {
     lvlOf(b) +
     powerRatio.toFixed(2) +
     waitReason(b) +
-    (d.wonder ? wonderStatus(b.type).text : '');
+    (d.wonder ? wonderStatus(b.type).text : '') +
+    coverSig(b);
   setHTML(p, 'ins', sig, () => {
     const mh = bMaxHp(b);
     // Het niveau staat in de verbeterkaart hieronder, niet ook nog in de kop
@@ -462,6 +502,7 @@ export function renderInspector() {
     h += charmLine(b);
     if (d.def)
       h += `<div class="stats"><span><i>${ico('⚔')}</i>${Math.round(towerDamage(b))} schade</span><span><i>${ico('◎')}</i>bereik ${fmtDec(towerRange(b))}</span></div>`;
+    h += serviceLine(b);
     if (UPG_OK(b.type)) {
       const l = lvlOf(b),
         top = AGES.length - 1 - B[b.type].age,
@@ -591,6 +632,10 @@ export function insHandler(e: MouseEvent) {
         v.job = 'build';
         v.prefSite = b;
       });
+  } else if (t.dataset.b === 'cover' && t.dataset.k) {
+    // Het bereik van een voorziening aan of uit (zie render/coverage.ts)
+    store.coverView = store.coverView === t.dataset.k ? null : t.dataset.k;
+    store.uiDirty = true;
   } else if (t.dataset.b === 'train1') {
     G.trainQ++;
   } else if (t.dataset.b === 'rally' && b) {

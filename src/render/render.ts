@@ -17,6 +17,7 @@ import { stepDying } from './animate';
 import { stepParticles } from './particles';
 import { drawAmbient } from './ambient';
 import { drawPlacement } from './ghost';
+import { drawCoverage } from './coverage';
 import { flagpole } from './kit';
 import { lighting } from './lighting';
 import { applySeason } from './seasons';
@@ -94,6 +95,7 @@ export function render() {
   stepFireworks(); // vuurwerk als je gewonnen hebt
   stepParticles(store.TM);
   drawPlacement();
+  drawCoverage(); // bereik van voorzieningen (zie coverage.ts)
   lighting(dk);
   // Cirkels onder geselecteerde dingen
   const sb = sel.b && bById.get(sel.b);

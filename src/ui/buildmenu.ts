@@ -28,6 +28,7 @@ import { RIVAL } from '../data/rivals';
 import { WONDER_CREW, rivalWonderTime, winBackText, wonderBuildTime } from '../data/wonders';
 import { ico } from './glyphs';
 import { CHARGE_NIGHTS } from '../data/finale';
+import { SERVICES, isServiceKey } from '../data/services';
 
 export const costText = (c: Cost): string =>
   Object.keys(c)
@@ -90,19 +91,26 @@ export function bShort(k: string): string {
       : 'Winnen hiermee staat uit in deze wereld';
   return '';
 }
-/** "+3 sfeer binnen 3,5 tegels · akkers +20%": wat een gebouw voor de buurt doet (leeg als niets). */
-export function charmText(k: string): string {
+/**
+ * "+3 sfeer binnen 3,5 tegels · akkers +20% · water voor huizen binnen 6 tegels": wat een gebouw voor de buurt
+ * doet (leeg als niets). `withServe` = false laat de voorziening weg: het infopaneel toont die in een eigen regel.
+ */
+export function charmText(k: string, withServe = true): string {
   const d = B[k],
     parts: string[] = [];
   if (d.charm)
     parts.push(`${d.charm.v > 0 ? '+' : '−'}${Math.abs(d.charm.v)} sfeer binnen ${fmtDec(d.charm.r)} tegels`);
   if (d.aura) parts.push(`akkers +${Math.round(d.aura.farm * 100)}%`);
+  // Een voorziening (zie data/services.ts); de veiligheid van een toren staat al als 'bereik' in bShort
+  const serve =
+    withServe && d.serve && isServiceKey(d.serve.k) ? SERVICES.find(s => s.k === d.serve!.k) : undefined;
+  if (serve) parts.push(`${serve.n.toLowerCase()} voor huizen binnen ${fmtDec(d.serve!.r)} tegels`);
   return parts.join(' · ');
 }
 function bDesc(k: string): string {
   const d = B[k],
     // Fabrieken en wonderen vertellen ook wat ze met de sfeer doen (versiering zegt dat al in bShort)
-    around = d.cat !== 'deco' && (d.charm || d.aura) ? ` · ${charmText(k)}` : '';
+    around = d.cat !== 'deco' && (d.charm || d.aura || d.serve) ? ` · ${charmText(k)}` : '';
   return (
     (d.desc ? d.desc + ' ' : '') + bShort(k) + around + (d.power ? ` · verbruikt ${d.power} stroom` : '')
   );
