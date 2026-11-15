@@ -120,7 +120,7 @@ function roadLine(b: Building): string {
         : '';
   const button = `<div class="upf">${cost ? costHTML(cost, true) : ''}<button class="primary" data-b="road" ${why ? `disabled title="${esc(why)}"` : ''}>Pad aanleggen</button></div>`;
   // Een fabriek zegt het al in zijn werkregel (zie waitReason): dan alleen de knop
-  const said = !!waitReason(b);
+  const said = waitReason(b).startsWith('Geen weg');
   return (
     (said ? '' : `<div class="statline warn"><i class="dot"></i>Niet aan de weg: ${offRoadEffect(d)}</div>`) +
     button
@@ -336,8 +336,10 @@ export function renderInspector() {
   if (sel.road >= 0) {
     const i = sel.road,
       tier = road[i];
+    // De weg is weg: keuze wissen en bij de volgende ronde het lege paneel tonen
     if (!tier) {
       sel.road = -1;
+      store.uiDirty = true;
       return;
     }
     const net = onRoadNet(i),
@@ -356,8 +358,9 @@ export function renderInspector() {
             tip: `Alle oude wegen worden ${ROADS[roadTier()].n.toLowerCase()}`,
           })
         : '');
-    return setHTML(p, 'ins', 'r' + i + tier + roadVersion() + (renew ? has(renew) : ''), () => {
-      const n = net ? buildingsOnStretch(i) : 0;
+    // Het aantal gebouwen hoort in de sig: een nieuw gebouw naast de weg verandert de wegen zelf niet
+    const n = net ? buildingsOnStretch(i) : 0;
+    return setHTML(p, 'ins', 'r' + i + tier + roadVersion() + '/' + n + (renew ? has(renew) : ''), () => {
       const sub = net ? 'Aan het wegennet' : 'Los van het stamhuis';
       const line = net
         ? `<div class="statline idle"><i class="dot"></i>Brengt ${n} ${n === 1 ? 'gebouw' : 'gebouwen'} aan de weg</div>`

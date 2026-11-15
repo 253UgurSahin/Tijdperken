@@ -145,7 +145,7 @@ export function buildRoadLink(b: Building, free = false, maxNew = LINK_MAX): num
   const cost = roadLinkCost(plan);
   if (!free && !has(cost)) return 0;
   if (!free) pay(cost);
-  for (const [x, y] of plan) layRoadTile(y * W + x, !free);
+  for (const [x, y] of plan) layRoadTile(y * W + x, !free, free);
   markRoadsChanged();
   updateRoadNet();
   return plan.length;
@@ -244,6 +244,11 @@ export function migrateOldTown(): { linked: number; exempt: number } {
   if (hall) layStartRoads(hall);
   updateRoadNet();
   for (const b of unlinkedBuildings()) {
+    // Een eerder gratis pad kan al langs dit gebouw lopen: dan is het gewoon aangesloten
+    if (roadLinked(b)) {
+      linked++;
+      continue;
+    }
     if (hall && buildRoadLink(b, true, LINK_MAX)) linked++;
     else {
       b.roadFree = true;

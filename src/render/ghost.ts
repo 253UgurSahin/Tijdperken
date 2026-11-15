@@ -3,12 +3,13 @@ import * as T3 from 'three';
 import { store } from '../core/store';
 import { B } from '../data/buildings';
 import { charmFrom, farmBoostOf } from '../data/charm';
-import { canPlace, ghostPos, lineTiles } from '../game/placement';
+import { buildCost, canPlace, ghostPos, lineTiles } from '../game/placement';
+import { has } from '../game/economy';
 import { G } from '../game/state';
 import type { Tile } from '../types';
 import { LINK_AUTO, needsRoad, ringTiles } from '../data/roads';
 import { W, H } from '../config';
-import { onRoadNet, planRoadLink, roadVersion, unlinkedBuildings } from '../game/roads';
+import { onRoadNet, planRoadLink, roadLinkCost, roadVersion, unlinkedBuildings } from '../game/roads';
 import { drag, mouse } from '../input/input';
 import { quadAt, rangeAt } from './decals';
 import { isMesh } from './kit';
@@ -53,6 +54,17 @@ export function ghostRoadPlan(type: string, x: number, y: number): Tile[] | null
     planTiles = planRoadLink({ type, x, y });
   }
   return planTiles;
+}
+/**
+ * Legt het spel dit pad vanzelf aan bij het plaatsen? Alleen als het kort genoeg is en je zowel het gebouw
+ * als het pad kunt betalen (eerst wordt het gebouw betaald, dan het pad).
+ */
+export function roadPlanIsAuto(type: string, plan: Tile[]): boolean {
+  if (plan.length > LINK_AUTO) return false;
+  const total: Record<string, number> = { ...buildCost(type) };
+  const link = roadLinkCost(plan);
+  for (const k in link) total[k] = (total[k] || 0) + link[k];
+  return has(total);
 }
 function hideGhosts(except?: string | null) {
   for (const k in ghostCache) if (k !== except) ghostCache[k].visible = false;
@@ -106,7 +118,7 @@ export function drawPlacement() {
 function showRoadPlan(type: string, gx: number, gy: number) {
   const plan = ghostRoadPlan(type, gx, gy);
   if (!plan) return;
-  const auto = plan.length <= LINK_AUTO;
+  const auto = roadPlanIsAuto(type, plan);
   for (const [x, y] of plan) quadAt(x + 0.5, y + 0.5, 0.9, 0.9, '#e0b04a', auto ? 0.55 : 0.25, 0.035);
   for (const i of ringTiles(gx, gy, B[type].size, W, H))
     if (onRoadNet(i)) quadAt((i % W) + 0.5, ((i / W) | 0) + 0.5, 0.9, 0.9, '#7fd65a', 0.35, 0.035);

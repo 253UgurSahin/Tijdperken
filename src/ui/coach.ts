@@ -367,7 +367,8 @@ function roadStep(): CoachStep | null {
     why = effect.startsWith('ligt ') ? effect : `ligt niet aan de weg en ${effect}`;
   const cost = roadLinkCost(plan),
     h = `Je ${name} ${why}. Een pad naar het stamhuis lost dat op.`;
-  if (!has(cost)) return { t, h: `${h} Nog ${lackText(cost)} nodig.`, wait: true };
+  // Te weinig hout? Dan gaat de gewone uitleg voor: het infopaneel toont al wat het pad kost
+  if (!has(cost)) return null;
   return { t, h, act: { l: 'Pad aanleggen', k: 'road', id: b.id } };
 }
 
@@ -419,7 +420,8 @@ function nextStep(): CoachStep {
       if (prep) return prep;
     }
   }
-  const road = roadStep();
+  // Is het volgende tijdperk klaar, dan wint die oproep van het pad
+  const road = ageReady ? null : roadStep();
   if (road) return road;
   if (G.age === 0) {
     if (!placed('hut'))

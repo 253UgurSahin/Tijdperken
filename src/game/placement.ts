@@ -150,14 +150,15 @@ export function lineTiles(a: Tile, b: Tile): Tile[] {
  * Leg één tegel weg aan op plek i, in de wegsoort van nu. Een boom of struik in de weg wordt gekapt (refund: dat
  * levert wat hout of voedsel op), een steen of zand geruimd. Roep daarna markRoadsChanged() aan.
  */
-export function layRoadTile(i: number, refund: boolean): void {
+// quiet: geen effectring, zodat een gratis pad (zoals bij een oude save) geen vuurwerk door het dorp geeft
+export function layRoadTile(i: number, refund: boolean, quiet = false): void {
   if (node[i] && CLEAR.has(NODES[node[i]].k)) {
     const k = NODES[node[i]].k;
     if (refund && k === 'tree') G.res.wood += 5;
     else if (refund && k === 'bush') G.res.food += 2;
     node[i] = 0;
     amt[i] = 0;
-    fxRing((i % W) + 0.5, ((i / W) | 0) + 0.5, '#9c6b3c');
+    if (!quiet) fxRing((i % W) + 0.5, ((i / W) | 0) + 0.5, '#9c6b3c');
   }
   road[i] = roadTier();
 }

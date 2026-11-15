@@ -23,7 +23,7 @@ import { LINK_AUTO, needsRoad } from '../data/roads';
 import { roadLinked } from '../game/roads';
 import { canPlace, ghostPos } from '../game/placement';
 import { mouse } from '../input/input';
-import { ghostRoadPlan } from './ghost';
+import { ghostRoadPlan, roadPlanIsAuto } from './ghost';
 
 function obar(x: number, y: number, w: number, f: number, col: string) {
   const c = octx;
@@ -189,10 +189,26 @@ function roadPlanLabel() {
   const plan = ghostRoadPlan(type, gx, gy),
     [sx, sy, sz] = proj(gx + s / 2, 0, gy + s + 0.4);
   if (sz > 1) return;
-  if (!plan) otext(sx, sy + 16, 'Geen weg in de buurt', '#ff8a7a', 13);
-  else if (!plan.length) otext(sx, sy + 16, 'Aan de weg', '#8fe07a', 13);
-  else if (plan.length <= LINK_AUTO) otext(sx, sy + 16, `+${plan.length} pad`, '#f0c060', 13);
-  else otext(sx, sy + 16, `+${plan.length} pad: sleep zelf`, '#f0c060', 13);
+  if (!plan) pillText(sx, sy + 16, 'Geen weg in de buurt', '#ff8a7a');
+  else if (!plan.length) pillText(sx, sy + 16, 'Aan de weg', '#8fe07a');
+  else if (roadPlanIsAuto(type, plan)) pillText(sx, sy + 16, `+${plan.length} pad`, '#f0c060');
+  else if (plan.length <= LINK_AUTO) pillText(sx, sy + 16, `+${plan.length} pad: te weinig hout`, '#f0c060');
+  else pillText(sx, sy + 16, `+${plan.length} pad: sleep zelf`, '#f0c060');
+}
+/** Tekst op een klein donker bolletje, zodat hij ook boven bomen en gras leesbaar blijft. */
+function pillText(x: number, y: number, t: string, col: string) {
+  const c = octx;
+  c.font = '600 14px "Instrument Sans",sans-serif';
+  const w = c.measureText(t).width + 16,
+    h = 22,
+    top = y - 15;
+  c.fillStyle = 'rgba(10,14,20,.62)';
+  c.beginPath();
+  c.roundRect(x - w / 2, top, w, h, h / 2);
+  c.fill();
+  c.textAlign = 'center';
+  c.fillStyle = col;
+  c.fillText(t, x, y);
 }
 export function drawOverlay() {
   const c = octx;
