@@ -28,6 +28,7 @@ import { checkAchievements } from './achievements';
 import { checkVictory } from './victory';
 import { makeBoss } from './bosses';
 import { updateFinale } from './finale';
+import { updateCarts } from './carts';
 
 /** Onthoud waar alles stond vóór de volgende speltik, zodat de weergave ertussen kan tekenen. */
 export function rememberPositions() {
@@ -148,6 +149,7 @@ export function update(dt: number) {
   updateFinale(dt); // de sterrenpoort laadt op (zie game/finale.ts)
   updateMeteors(dt);
   updateProj(dt);
+  updateCarts(dt);
   for (const e of G.fx) {
     e.life -= dt;
     if (e.type === 'smoke') {

@@ -14,6 +14,7 @@ import { G } from './state';
 import { mul } from './bonus';
 import { bRate, lvlOf, towerDamage, towerRange } from './upgrades';
 import { roadRate } from './roads';
+import { noteFlow } from './carts';
 // Elders importeren ze towerDamage nog uit dit bestand
 export { towerDamage };
 import { amt, node } from '../world/world';
@@ -38,6 +39,7 @@ export function bUpdate(b: Building, dt: number): void {
       if (has(d.conv.in) && !b.saving) {
         pay(d.conv.in);
         gain(d.conv.out);
+        noteFlow(b, d.conv.in, d.conv.out); // alleen voor de karren op de weg (zie game/carts.ts)
         b.ct = 0;
         b.act = CONV_ACT;
         b.starved = false;
@@ -63,6 +65,7 @@ export function bUpdate(b: Building, dt: number): void {
         const wasRunning = b.run;
         if (needed && has(d.gen.in!)) {
           pay(d.gen.in!);
+          noteFlow(b, d.gen.in!, {});
           b.run = true;
           b.act = d.gen.t!;
         } else b.run = false;
@@ -81,6 +84,7 @@ export function bUpdate(b: Building, dt: number): void {
         b.ct = 0;
         amt[i]--;
         G.res.oil++;
+        noteFlow(b, {}, { oil: 1 });
         b.act = 1;
       }
     }
