@@ -4,42 +4,62 @@ import { S3 } from './scene';
 
 // Lichtvlekken op de grond. Ze worden gemengd met 'MAX': als lampen overlappen telt
 // alleen de felste, dus veel kampvuren naast elkaar worden geen witte vlek.
-function radialTex(r: number, g: number, b: number): T3.CanvasTexture {
+// Alle vlekken samen zijn één vorm met veel plekken ("instanced"): één tekenopdracht, hoeveel lampen er ook zijn.
+// Het plaatje is wit; de kleur (warm of koel, en hoe fel) zit per vlek in de instance-kleur.
+function radialTex(): T3.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
   const x = c.getContext('2d')!,
     gr = x.createRadialGradient(64, 64, 0, 64, 64, 64);
-  gr.addColorStop(0, `rgb(${r},${g},${b})`);
-  gr.addColorStop(0.45, `rgb(${(r * 0.55) | 0},${(g * 0.55) | 0},${(b * 0.55) | 0})`);
+  gr.addColorStop(0, 'rgb(255,255,255)');
+  gr.addColorStop(0.45, 'rgb(140,140,140)');
   gr.addColorStop(1, 'rgb(0,0,0)');
   x.fillStyle = gr;
   x.fillRect(0, 0, 128, 128);
   return new T3.CanvasTexture(c);
 }
-const GLOWTEX = radialTex(255, 180, 100),
-  GLOWTEXC = radialTex(200, 225, 255);
-export const GLOWS: T3.Mesh<T3.CircleGeometry, T3.MeshBasicMaterial>[] = [];
-export function glow(i: number, warm: boolean) {
-  let m = GLOWS[i];
-  if (!m) {
-    m = new T3.Mesh(
-      new T3.CircleGeometry(1, 40),
-      new T3.MeshBasicMaterial({
-        map: GLOWTEX,
-        blending: T3.CustomBlending,
-        blendEquation: T3.MaxEquation,
-        depthWrite: false,
-        fog: false,
-      }),
-    );
-    m.rotation.x = -Math.PI / 2;
-    m.renderOrder = 2;
-    S3.add(m);
-    GLOWS[i] = m;
-  }
-  m.material.map = warm ? GLOWTEX : GLOWTEXC;
-  m.visible = true;
-  return m;
+/** Zoveel lichtvlekken hooguit: lampen (MAX_GLOWS in lighting.ts) plus het licht uit deuren. */
+export const GLOW_CAP = 96 + 64;
+const glowGeo = new T3.PlaneGeometry(2, 2);
+glowGeo.rotateX(-Math.PI / 2);
+export const GLOWS = new T3.InstancedMesh(
+  glowGeo,
+  new T3.MeshBasicMaterial({
+    map: radialTex(),
+    blending: T3.CustomBlending,
+    blendEquation: T3.MaxEquation,
+    depthWrite: false,
+    fog: false,
+  }),
+  GLOW_CAP,
+);
+GLOWS.count = 0;
+GLOWS.renderOrder = 2;
+GLOWS.frustumCulled = false;
+GLOWS.instanceMatrix.setUsage(T3.DynamicDrawUsage);
+GLOWS.setColorAt(0, new T3.Color(0, 0, 0)); // (zo bestaat de kleurbuffer meteen, en kent de shader hem)
+// (blijft altijd in de scène; zonder vlekken verborgen, zie glowsEnd en precompileNightShaders)
+S3.add(GLOWS);
+const glowM = new T3.Matrix4(),
+  glowC = new T3.Color();
+/** Begin van een beeldje: nog geen lichtvlekken. */
+export function glowsBegin(): void {
+  GLOWS.count = 0;
+}
+/** Een lichtvlek op (x, z) met straal r, in kleur colour en zo fel (0..1). */
+export function glowAt(x: number, z: number, r: number, colour: T3.Color, strength: number): void {
+  if (GLOWS.count >= GLOW_CAP) return;
+  glowM.makeScale(r, 1, r).setPosition(x, 0.04, z);
+  GLOWS.setMatrixAt(GLOWS.count, glowM);
+  GLOWS.setColorAt(GLOWS.count, glowC.copy(colour).multiplyScalar(strength));
+  GLOWS.count++;
+}
+/** Einde van een beeldje: de nieuwe plekken en kleuren naar de videokaart. */
+export function glowsEnd(): void {
+  // Geen vlekken (overdag): verborgen, dan slaat three.js hem helemaal over
+  GLOWS.visible = GLOWS.count > 0;
+  GLOWS.instanceMatrix.needsUpdate = true;
+  GLOWS.instanceColor!.needsUpdate = true;
 }
 export const RINGG = new T3.RingGeometry(0.86, 1, 40);
 RINGG.rotateX(-Math.PI / 2);
