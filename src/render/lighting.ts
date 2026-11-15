@@ -9,7 +9,7 @@ import { isCharging } from '../game/finale';
 import { FAR_DIST, camDist, isFar } from './camera';
 import { GLOWS, glowAt, glowsBegin, glowsEnd } from './decals';
 import { lampSwitchAt, nightWarmup, setCityNight, setLitLamps } from './kit';
-import { lampHash, litShares } from './nightclock';
+import { doorLight, litShares } from './nightclock';
 import { B } from '../data/buildings';
 import type { Building } from '../types';
 import { nearestK } from '../util/nearest';
@@ -60,8 +60,8 @@ const MAX_DOORS = 64;
 // wordt op groen maanlichtgras olijfgroen in plaats van warm.
 const GLOW_WARM = new T3.Color(255 / 255, 128 / 255, 50 / 255),
   GLOW_COLD = new T3.Color(200 / 255, 225 / 255, 255 / 255),
-  // Licht uit een deur: wat geler dan vuur, als lamplicht van binnen
-  GLOW_DOOR = new T3.Color(255 / 255, 165 / 255, 85 / 255),
+  // Licht uit een deur: dezelfde gele kleur als de ramen erboven, zodat het bij het huis hoort (geen vuurtje)
+  GLOW_DOOR = new T3.Color(255 / 255, 195 / 255, 120 / 255),
   PL_WARM = new T3.Color('#ff7f36'),
   PL_COLD = new T3.Color('#dfe8ff');
 // Steeds hergebruikte lijsten (geen nieuwe lijsten per beeldje): lampen en huizen in de buurt
@@ -267,21 +267,20 @@ export function lighting(dk: number) {
 
 /**
  * Warm schijnsel voor de deur van bewoonde huizen waar het licht brandt: een klein, zwak vlekje (alleen om te
- * zien, het is geen echte lamp: dorpelingen werken er niet beter door). Dezelfde regel als de ramen: 's avonds
- * gaan ze huis voor huis aan, na middernacht de meeste weer uit.
+ * zien, het is geen echte lamp: dorpelingen werken er niet beter door). Precies dezelfde regel als de ramen
+ * (zie doorLight): brandt er licht achter de ramen, dan ook bij de deur.
  */
 const isLitHome = (b: Building) => b.done && !!B[b.type].pop;
 function doorSpills(dk: number) {
-  const [evening, night] = litShares(G.clock),
-    share = evening * night;
-  if (share <= 0) return;
+  const [evening, night] = litShares(G.clock);
+  if (evening * night <= 0) return;
   const homes = nearestK(G.bs, cam.x, cam.y, camDist() * 1.1, MAX_DOORS, nearHomes, isLitHome);
   for (const b of homes) {
-    // Zacht aan en uit rond het moment van dit huis (vast per huis)
-    const houseLit = Math.min(1, Math.max(0, (share - lampHash(b.x, b.y)) / 0.05));
-    if (houseLit <= 0) continue;
     const s = B[b.type].size;
+    // (het midden van het huis: daar staat het model, en daarmee rekent ook de raam-shader)
+    const houseLit = doorLight(b.x + s / 2, b.y + s / 2, evening, night);
+    if (houseLit <= 0) continue;
     // De deur zit bij elk model aan de voorkant (de kant met de hoogste y, zie door() in kit.ts)
-    glowAt(b.x + s / 2, b.y + s + 0.15, Math.min(0.8, 0.35 + 0.3 * s), GLOW_DOOR, dk * 0.6 * houseLit);
+    glowAt(b.x + s / 2, b.y + s + 0.15, Math.min(0.6, 0.3 + 0.2 * s), GLOW_DOOR, dk * 0.5 * houseLit);
   }
 }

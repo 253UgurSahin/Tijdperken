@@ -29,7 +29,9 @@ import { aimTurrets, findTurrets, type TurretState } from './turrets';
 import { makeBuilding, makeCamp, wallMask } from './models';
 import { hideNode, nodesNeedUpdate, rebuildNodes } from './nodes';
 import { FOEK, makeUnit, makeVillager } from './people';
-import { crowdAdd, crowdBegin, crowdEnd } from './crowd';
+import { crowdBegin, crowdEnd, crowdFigure } from './crowd';
+import { drag } from '../input/input';
+import { entitiesInBox } from '../input/selection';
 import { animEntity, clearDying, initAnim, startDeath, type Animated } from './animate';
 import { LAYER, clearParticles, emit, puff } from './particles';
 import { markOrder } from './effects';
@@ -933,9 +935,9 @@ function showAsDot(r: EntityRec) {
   viewSphere.center.set(r.g.position.x, 0.4, r.g.position.z);
   const show = !dots && viewFrustum.intersectsSphere(viewSphere);
   const still = statues && !!r.statue;
-  // Een vast beeldje tekenen we samen met de rest van zijn soort (zie crowd.ts); het figuur zelf gaat dan
-  // even uit de wereld, net als bij een stip
-  const crowded = show && still && !needsOwnFigure(r);
+  // Een figuur tekenen we samen met de rest van zijn soort (zie crowd.ts), als beeldje of bewegend; het figuur
+  // zelf gaat dan even uit de wereld, net als bij een stip
+  const crowded = show && !needsOwnFigure(r);
   const attached = show && !crowded;
   if (attached !== (r.body.parent === r.g)) {
     if (attached) r.g.add(r.body);
@@ -953,8 +955,18 @@ function showAsDot(r: EntityRec) {
     r.statue!.visible = still;
   }
 }
-// Figuren die nu als beeldje in de groep van hun soort staan (een WeakSet: opgeruimde figuren vallen er vanzelf uit)
+// Figuren die nu in de groep van hun soort staan (een WeakSet: opgeruimde figuren vallen er vanzelf uit)
 const inCrowd = new WeakSet<EntityRec>();
+// Figuren in het selectiekader dat je nu sleept: die krijgen een omlijning, dus een eigen figuur
+const inDragBox = new Set<number>();
+function updateDragBox() {
+  inDragBox.clear();
+  if (!drag || drag.mode !== 'box') return;
+  const { us, vs } = entitiesInBox(drag.sx, drag.sy, drag.lx, drag.ly);
+  for (const e of us) inDragBox.add(e.id);
+  // (dorpelingen negatief: een dorpeling en een soldaat kunnen hetzelfde nummer hebben)
+  for (const e of vs) inDragBox.add(-e.id);
+}
 /**
  * Moet dit figuur echt los getekend worden? Een omlijning (geselecteerd of aangewezen), de flits van een
  * treffer en de kroon van een kampioen werken alleen op een eigen figuur, niet op een beeldje in een groep.
@@ -964,18 +976,18 @@ function needsOwnFigure(r: EntityRec): boolean {
     hover = store.hover;
   if (r.crown || store.TM - r.hitT < 0.25) return true;
   if (hover && hover.id === e.id && hover.kind === e.kind) return true;
+  if (e.kind !== 'f' && inDragBox.has(e.kind === 'v' ? -e.id : e.id)) return true;
   return e.kind === 'v' ? sel.vs.has(e.id) : e.kind === 'u' && sel.us.has(e.id);
 }
 const crowdMatrix = new T3.Matrix4();
-/** Alle beeldjes in de groepen zetten (na het bewegen: de houder draagt plek en draaiing, body het wiebelen). */
-function crowdStatues() {
+/** Alle figuren in hun groepen zetten (na het bewegen, zodat armen en benen in de houding van nu staan). */
+function crowdFigures() {
   for (const r of eRec.values()) {
-    if (!inCrowd.has(r) || !r.g.visible) continue;
+    if (!inCrowd.has(r) || !r.g.visible || !r.body.visible) continue;
     r.g.updateMatrix();
-    r.body.updateMatrix();
-    crowdMatrix.multiplyMatrices(r.g.matrix, r.body.matrix);
-    // (in inCrowd staan alleen figuren met een beeldje, zie showAsDot)
-    crowdAdd(r.key, r.statue!, crowdMatrix, r.statue!.castShadow);
+    // (EG3 zelf staat op de oorsprong, dus de matrix van de houder is meteen zijn plek in de wereld)
+    crowdMatrix.copy(r.g.matrix);
+    crowdFigure(r.key, r.body, crowdMatrix, r.statueOn);
   }
 }
 /** Het figuur weer helemaal compleet (voor het omvallen of opruimen): alle delen terug, zonder beeldje. */
@@ -1009,6 +1021,7 @@ export function syncEntities() {
   dots = camDist() > DOT_DIST;
   statues = pxu() < STATUE_PX;
   crowdBegin();
+  updateDragBox();
   // (0,25 tegel is de gewone straal van de schijf onder een soldaat, zie syncEnt)
   dotGrow = dots ? Math.max(1, DOT_PX / (0.25 * pxu())) : 1;
   for (const r of eRec.values()) r.seen = 0;
@@ -1099,7 +1112,7 @@ export function syncEntities() {
         startDeath(r);
       } else disposeMerged(r.g);
     }
-  crowdStatues();
+  crowdFigures();
   crowdEnd();
   drawDiscs();
 }

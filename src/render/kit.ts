@@ -63,7 +63,8 @@ export const setDetail = (on: boolean) => (detail = on);
 type SolidMesh = T3.Mesh<T3.BufferGeometry, T3.MeshStandardMaterial>;
 // Zachte overgang van 0 naar 1 (zoals smoothstep in een shader)
 const smooth01 = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
-const VCMAT = new T3.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.88 });
+// (ook gebruikt door crowd.ts, om de shader voor figuren in groepen vooraf klaar te maken)
+export const VCMAT = new T3.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.88 });
 
 // Een klein plaatje met korrel (toevallig grijs), voor de structuur op muren en daken
 const GRAIN = (() => {
@@ -189,7 +190,8 @@ function mergeSameMaterial(g: T3.Object3D, parts: T3.Mesh[], material: T3.Materi
   mg.userData.merged = true; // hoort bij precies één model (zie disposeMerged)
   for (const o of parts) g.remove(o);
   const m = new T3.Mesh(mg, material);
-  // Ramen, glas en gloeiende stukjes liggen plat op of in de muur: hun schaduw valt toch in die van de muur
+  // Ramen, glas en gloeiende stukjes liggen plat op of in de muur: hun schaduw valt toch in die van de muur.
+  // (Een los zwevend gloeiend deel, zoals een lichtbol, verliest zo ook zijn kleine schaduw: dat nemen we aan.)
   m.castShadow =
     parts.some(o => o.castShadow) && material !== WIN && material !== GLASS && !isGlowing(material);
   m.receiveShadow = parts.some(o => o.receiveShadow);

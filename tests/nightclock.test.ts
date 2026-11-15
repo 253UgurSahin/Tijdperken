@@ -1,6 +1,6 @@
 // Toetst het rekenwerk voor de stad 's nachts: hoeveel ramen aan zijn, en wanneer elke lamp aangaat.
 import { describe, expect, it } from 'vitest';
-import { lampSwitchAt, litShares } from '../src/render/nightclock';
+import { doorLight, lampSwitchAt, litShares, winHash } from '../src/render/nightclock';
 
 describe('ramen in de nacht', () => {
   it('overdag en na zonsopkomst is geen raam aan', () => {
@@ -31,5 +31,30 @@ describe('lampen', () => {
         expect(at).toBeLessThan(0.45);
         expect(lampSwitchAt(x + 0.1, y + 0.9)).toBe(at);
       }
+  });
+});
+
+describe('licht bij de deur', () => {
+  // Een rij huizen (middens op halve tegels, zoals een huis van 1 of 3 tegels breed)
+  const houses: [number, number][] = [];
+  for (let x = 0; x < 30; x++) for (let y = 0; y < 20; y++) houses.push([x * 3 + 1.5, y * 2 + 0.5]);
+  const litPart = (clock: number) => {
+    const [evening, night] = litShares(clock);
+    return houses.filter(([x, z]) => doorLight(x, z, evening, night) > 0.5).length / houses.length;
+  };
+  it('het toevalsgetal van een huis ligt tussen 0 en 1 en is steeds hetzelfde', () => {
+    for (const [x, z] of houses.slice(0, 50)) {
+      const h = winHash(x * 2, z * 2, 0);
+      expect(h).toBeGreaterThanOrEqual(0);
+      expect(h).toBeLessThan(1);
+      expect(winHash(x * 2, z * 2, 0)).toBe(h);
+    }
+  });
+  it('overdag nergens licht, om half elf bij de meeste huizen, om half drie bij een paar', () => {
+    expect(litPart(12)).toBe(0);
+    expect(litPart(22.5)).toBeGreaterThan(0.7);
+    expect(litPart(22.5)).toBeLessThan(0.95);
+    expect(litPart(2.5)).toBeGreaterThan(0.03);
+    expect(litPart(2.5)).toBeLessThan(0.3);
   });
 });

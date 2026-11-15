@@ -326,7 +326,8 @@ const NEAR_SET: Record<string, NodePart[]> = {},
   FAR_SET: Record<string, NodePart[]> = {};
 for (const k in NVAR) {
   NEAR_SET[k] = mergeByMaterial(NVAR[k]);
-  FAR_SET[k] = mergeByMaterial(NVAR[k], HIDDEN_FAR[k]);
+  // (zonder kleine onderdelen is ver weg precies hetzelfde: dan dezelfde vormen, niet nog een kopie)
+  FAR_SET[k] = HIDDEN_FAR[k]?.length ? mergeByMaterial(NVAR[k], HIDDEN_FAR[k]) : NEAR_SET[k];
 }
 
 // Losse rotsblokken op de bergen: zo zijn de bergen niet glad maar ruw en rotsig.
@@ -496,11 +497,11 @@ export function hideNode(i: number): void {
   const at = placedAt.get(i);
   if (!at) return; // niet in beeld: dan staat hij er ook niet
   placedAt.delete(i);
-  // (de vormen voor ver weg delen dezelfde plekken, dus die gaan vanzelf mee)
-  for (const m of NI3[at[0]]?.near || []) {
-    m.setMatrixAt(at[1], GONE);
-    m.instanceMatrix.needsUpdate = true;
-  }
+  // (alle vormen van deze soort, dichtbij en ver weg, delen één buffer met plekken: één keer schrijven is genoeg)
+  const first = NI3[at[0]]?.near[0];
+  if (!first) return;
+  first.setMatrixAt(at[1], GONE);
+  first.instanceMatrix.needsUpdate = true;
 }
 export function rebuildNodes(full?: boolean): void {
   placedAt.clear();

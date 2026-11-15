@@ -18,6 +18,35 @@ export function lampHash(x: number, y: number): number {
   return fract((a + b) * c);
 }
 
+/** Een vast toevalsgetal (0..1) uit drie hele getallen. Precies dezelfde som staat in de raam-shader (kit.ts). */
+export function winHash(x: number, y: number, z: number): number {
+  let a = fract(x * 0.1031),
+    b = fract(y * 0.103),
+    c = fract(z * 0.0973);
+  // (p += dot(p, p.yxz + 33.33) uit de shader)
+  const d = a * (b + 33.33) + b * (a + 33.33) + c * (c + 33.33);
+  a += d;
+  b += d;
+  c += d;
+  return fract((a + b) * c);
+}
+
+/**
+ * Hoe fel het licht bij de deur van een huis brandt (0..1), met dezelfde regel als zijn ramen in de shader:
+ * 's avonds gaat het huis aan als zijn nummer onder het avonddeel zit, 's nachts blijft het aan zolang zijn
+ * eerste ruit nog brandt. (cx, cz) = het midden van het huis in de wereld; evening en night uit litShares.
+ */
+export function doorLight(cx: number, cz: number, evening: number, night: number): number {
+  // Zoals vWinId in de shader: plek maal twee, afgerond
+  const hx = Math.floor(cx * 2 + 0.5),
+    hz = Math.floor(cz * 2 + 0.5);
+  const house = winHash(hx, hz, 0),
+    pane = winHash(hx, hz, 7);
+  // (een korte zachte overgang, zodat het licht niet in één beeldje aan of uit springt)
+  const on = (share: number, at: number) => Math.min(1, Math.max(0, (share - at) / 0.03));
+  return on(evening, house) * on(night, fract(pane * 31.7));
+}
+
 /**
  * Bij welke donkerte (0..0.78) de lamp op plek (x, y) aangaat: voor elke lamp een vast, eigen moment, zodat ze
  * 's avonds één voor één aangaan. De lichtvlek en het licht (lighting.ts) en de lampkop (shader) gebruiken dit
