@@ -21,7 +21,7 @@ import {
   armsMul,
   bMaxHp,
   bPop,
-  charmPopBonus,
+  homePopBonus,
   lvlOf,
   marketPrices,
   maxLvl,
@@ -71,12 +71,74 @@ import { clamp, dist } from '../util/math';
 import { amt, bmap, isUnl, node, setBlk } from '../world/world';
 import { canMake, fitsPeople } from '../data/succession';
 import { isNight } from '../game/time';
-import { charmOf, farmBoostFor, tierOf } from '../game/charm';
+import { charmOf, farmBoostFor } from '../game/charm';
 import { charmFrom } from '../data/charm';
+import {
+  DECLINE_AFTER,
+  GROW_AFTER,
+  HOUSE_GRADES,
+  joinNeeds,
+  nextNeeds,
+  targetGrade,
+  taxPerMinute,
+} from '../data/houses';
+import { gradeOf, homeState } from '../game/houses';
 import { charmText } from './buildmenu';
 import { SERVICE_BY_KEY, servicesUnlocked } from '../data/services';
-import { coverVersion, homesInDisc, isHome, servesOfType, servicesAt, sourceActive } from '../game/coverage';
+import { coverVersion, homesInDisc, isHome, servesOfType, sourceActive } from '../game/coverage';
 
+/**
+ * De welvaart van een huis (zie game/houses.ts): de trede met stippen, wat het huis heeft en mist (weg,
+ * voorzieningen, sfeer), en wanneer het groeit of vervalt. Leeg voor het stamhuis.
+ */
+function gradeCard(b: Building): string {
+  if (!isHome(b)) return '';
+  const grade = gradeOf(b),
+    g = HOUSE_GRADES[grade],
+    s = homeState(b),
+    target = targetGrade(s),
+    timer = b.gradeT || 0,
+    dots = '●'.repeat(grade) + '○'.repeat(4 - grade);
+  const chip = (ok: boolean, text: string, tip: string) =>
+    `<span class="svc ${ok ? 'ok' : 'no'}" title="${esc(tip)}">${ico(ok ? '✓' : '✕')}${text}</span>`;
+  const chips = [
+    chip(
+      s.linked,
+      s.linked ? 'Aan de weg' : 'Geen weg',
+      s.linked ? 'Ligt aan de weg' : 'Leg een pad naar het stamhuis',
+    ),
+  ];
+  for (const k of servicesUnlocked(G.age)) {
+    const def = SERVICE_BY_KEY[k],
+      ok = !s.missing.includes(k);
+    chips.push(chip(ok, def.n, ok ? def.n : `Geen ${def.n.toLowerCase()}: bouw ${def.need} in de buurt`));
+  }
+  // De knop toont het bereik van de eerste voorziening die mist (zie render/coverage.ts)
+  const first = s.missing[0];
+  const show = first
+    ? `<button class="svcbtn${store.coverView === first ? ' on' : ''}" data-b="cover" data-k="${first}">Toon</button>`
+    : '';
+  const charm = `<span class="svc charmchip ${s.charm < 0 ? 'no' : s.charm >= 3 ? 'ok' : ''}" title="Sfeer: versiering in de buurt telt op, fabrieken tellen af">${ico('⚘')}Sfeer ${s.charm > 0 ? '+' : ''}${s.charm}</span>`;
+  // Wat er nu gebeurt: groeien, vervallen, of wat nog mist voor de volgende trede
+  let what: string;
+  if (target > grade)
+    what = `Groeit over ${Math.max(1, Math.ceil(GROW_AFTER - Math.max(0, timer)))} s naar ${HOUSE_GRADES[grade + 1].n}`;
+  else if (target < grade) {
+    const why = nextNeeds(s, target);
+    what = `Vervalt over ${Math.max(1, Math.ceil(DECLINE_AFTER + Math.min(0, timer)))} s${why.length ? `: mist ${joinNeeds(why)}` : ''}`;
+  } else if (grade >= 4) what = 'Hoogste welvaart';
+  else {
+    const why = nextNeeds(s, grade);
+    what = `Volgende: ${HOUSE_GRADES[grade + 1].n}${why.length ? ` · mist ${joinNeeds(why)}` : ''}`;
+  }
+  const tax = taxPerMinute(grade, G.age);
+  return `<div class="gradecard" style="--grade:${g.c}">
+    <div class="gradehead"><span>Welvaart: <b>${g.n}</b></span><span class="gradedots" aria-label="trede ${grade} van 4">${dots}</span></div>
+    <div class="svcchips">${chips.join('')}${charm}${show}</div>
+    <div class="statline ${target < grade ? 'warn' : 'idle'}"><i class="dot"></i>${esc(what)}</div>
+    ${tax ? `<div class="statline idle"><i class="dot"></i>Belasting: +${fmtDec(tax)} goud per minuut</div>` : ''}
+  </div>`;
+}
 /**
  * Wat de sfeer met dit gebouw doet: bij een huis hoe gezellig het is, bij versiering of een fabriek hoeveel
  * huizen het raakt, bij een akker of er een waterput of molen helpt. Leeg als het er niets mee te maken heeft.
@@ -84,15 +146,7 @@ import { coverVersion, homesInDisc, isHome, servesOfType, servicesAt, sourceActi
 function charmLine(b: Building): string {
   if (!b.done) return '';
   const d = B[b.type];
-  if (d.pop) {
-    const tier = tierOf(b),
-      v = charmOf(b),
-      extra = charmPopBonus(b),
-      effect = extra
-        ? ` · ${extra > 0 ? '+' : '−'}${Math.abs(extra)} ${Math.abs(extra) === 1 ? 'inwoner' : 'inwoners'}`
-        : '';
-    return `<div class="statline charm ${tier.k}"><i class="dot"></i>Sfeer: ${tier.n} (${v > 0 ? '+' : ''}${v})${effect}</div>`;
-  }
+  if (d.pop) return gradeCard(b);
   if (d.work) {
     const boost = Math.round((farmBoostFor(b) - 1) * 100);
     return boost
@@ -177,20 +231,8 @@ export let selCmds: string | null = null,
 function serviceLine(b: Building): string {
   if (!b.done) return '';
   let h = '';
-  if (isHome(b)) {
-    const here = servicesAt(b);
-    let missing = '';
-    const chips = servicesUnlocked(G.age).map(k => {
-      const s = SERVICE_BY_KEY[k],
-        ok = here.includes(k);
-      if (!ok && !missing) missing = k;
-      return `<span class="svc ${ok ? 'ok' : 'no'}" title="${esc(ok ? s.n : `Geen ${s.n.toLowerCase()}: bouw ${s.need} in de buurt`)}">${ico(ok ? '✓' : '✕')}${s.n}</span>`;
-    });
-    const show = missing
-      ? `<button class="svcbtn${store.coverView === missing ? ' on' : ''}" data-b="cover" data-k="${missing}">Toon</button>`
-      : '';
-    return `<div class="svcchips">${chips.join('')}${show}</div>`;
-  }
+  // Bij een huis staan de voorzieningen al in de welvaartkaart (zie gradeCard)
+  if (isHome(b)) return '';
   // Alleen de voorzieningen van dit tijdperk; de eerste ervan zie je vanzelf (zie shownService in render/coverage.ts)
   const mine = servesOfType(b.type).filter(s => SERVICE_BY_KEY[s.k].age <= G.age),
     shown = mine.find(s => s.k === store.coverView) || mine[0],
@@ -544,6 +586,7 @@ export function renderInspector() {
     b.blocked +
     (siteCnt.get(b.id) || 0) +
     lvlOf(b) +
+    (gradeOf(b) + '/' + Math.round(b.gradeT || 0) + '/' + charmOf(b)) +
     powerRatio.toFixed(2) +
     waitReason(b) +
     (d.wonder ? wonderStatus(b.type).text : '') +
@@ -591,7 +634,12 @@ export function renderInspector() {
       h += flowLine(b);
     }
     h += roadLine(b);
-    if (d.pop) h += `<div class="stats"><span><i>${ico('⌂')}</i>${bPop(b)} inwoners</span></div>`;
+    if (d.pop) {
+      // Wat de welvaart erbij geeft of afhaalt staat er tussen haakjes achter
+      const extra = homePopBonus(b),
+        why = extra ? ` (${extra > 0 ? '+' : '−'}${Math.abs(extra)} door welvaart)` : '';
+      h += `<div class="stats"><span><i>${ico('⌂')}</i>${bPop(b)} inwoners${why}</span></div>`;
+    }
     h += charmLine(b);
     if (d.def)
       h += `<div class="stats"><span><i>${ico('⚔')}</i>${Math.round(towerDamage(b))} schade</span><span><i>${ico('◎')}</i>bereik ${fmtDec(towerRange(b))}</span></div>`;

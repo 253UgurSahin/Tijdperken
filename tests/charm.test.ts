@@ -3,13 +3,11 @@ import { B, CATS } from '../src/data/buildings';
 import { CHARM_MAX, CHARM_MIN, charmFrom, charmOfHome, charmTier, farmBoostOf } from '../src/data/charm';
 
 describe('sfeer', () => {
-  it('de treden lopen van somber naar prachtig, met meer inwoners naarmate het gezelliger is', () => {
+  it('de treden lopen van somber naar prachtig', () => {
     expect(charmTier(-1).k).toBe('grim');
     expect(charmTier(0).k).toBe('plain');
     expect(charmTier(3).k).toBe('cosy');
     expect(charmTier(6).k).toBe('lovely');
-    expect(charmTier(-1).popMul).toBeLessThan(1);
-    expect(charmTier(6).popMul).toBeGreaterThan(charmTier(3).popMul);
   });
 
   it('versiering in de buurt telt mee, verder weg niet', () => {

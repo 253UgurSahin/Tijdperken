@@ -82,6 +82,9 @@ interface DevTools {
   rivalOffer?: (i?: number, kind?: OfferKind) => boolean;
   diplo?: (i?: number) => void;
   allyHelp?: (i?: number) => void;
+  houses?: typeof houses;
+  /** Zet de welvaart van een huis meteen op n (0 vervallen .. 4 prachtig). */
+  grade?: (b: Building, n: number) => void;
   army?: typeof army;
   armyUI?: typeof armyUI;
   /** Geeft soldaat u meteen n overwinningen (standaard 3) en geeft hem terug. */
@@ -291,6 +294,13 @@ window.__tp.allyHelp = (i = 0) => {
   r.ally = true;
   r.atWar = false;
   diplomacy.sendHelpers(r);
+};
+// Welvaart van huizen: __tp.houses is game/houses.ts, __tp.grade(b, 4) maakt een huis meteen prachtig
+import * as houses from './game/houses';
+window.__tp.houses = houses;
+window.__tp.grade = (b, n) => {
+  b.grade = n;
+  b.gradeT = 0;
 };
 // Legerbesturing: groepen, veteranen en formatie (__tp.army.formationMove(__tp.G.us, x, y, 'move')),
 // of geef een soldaat meteen overwinningen: __tp.kills(u, 8) maakt hem elite

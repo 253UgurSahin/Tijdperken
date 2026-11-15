@@ -5,6 +5,7 @@ import { B } from '../data/buildings';
 import { SERVICES, inDisc, maskAt, servicesOf, stampDisc } from '../data/services';
 import type { ServiceKey, ServiceSource } from '../data/services';
 import { G } from './state';
+import { roadLinked } from './roads';
 import { markTip, tipSeen } from '../core/tips';
 import { toast } from '../ui/hud';
 
@@ -32,8 +33,11 @@ function resetGrids(): void {
 }
 onMapSize(resetGrids);
 
-/** Werkt dit gebouw als voorziening? (house-growth voegt hier `&& roadLinked(b)` aan toe.) */
-export const sourceActive = (b: Building): boolean => b.done && b.on !== false && !b.dead;
+/**
+ * Werkt dit gebouw als voorziening? Een opslag of markt die niet aan de weg ligt, geeft niets (een waterput,
+ * totempaal of toren heeft geen weg nodig, zie roadLinked).
+ */
+export const sourceActive = (b: Building): boolean => b.done && b.on !== false && !b.dead && roadLinked(b);
 
 const indexOf = (k: ServiceKey): number => SERVICES.findIndex(s => s.k === k);
 

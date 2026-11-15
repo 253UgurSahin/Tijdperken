@@ -1,7 +1,7 @@
 // Sfeer in je dorp: versiering maakt huizen gezelliger, fabrieken maken ze somber. Puur rekenwerk, zonder spelstand.
 import type { BuildingDef } from '../types';
 
-/** Hoe gezellig een huis is, met wat het oplevert. */
+/** Hoe gezellig een huis is. */
 export interface CharmTier {
   /** Sleutel, voor de opmaak. */
   k: 'grim' | 'plain' | 'cosy' | 'lovely';
@@ -9,16 +9,17 @@ export interface CharmTier {
   n: string;
   /** Vanaf hoeveel sfeer (de eerste geldt voor alles daaronder). */
   min: number;
-  /** Zoveel keer de gewone plek voor inwoners. */
-  popMul: number;
 }
 
-/** Van somber naar prachtig. Een huis met veel sfeer heeft plek voor meer mensen. */
+/**
+ * Van somber naar prachtig. Sfeer is één van de dingen waardoor een huis groeit (zie data/houses.ts): de
+ * welvaart bepaalt hoeveel mensen er wonen, niet de sfeer alleen.
+ */
 export const CHARM_TIERS: CharmTier[] = [
-  { k: 'grim', n: 'Somber', min: -Infinity, popMul: 0.9 },
-  { k: 'plain', n: 'Gewoon', min: 0, popMul: 1 },
-  { k: 'cosy', n: 'Gezellig', min: 3, popMul: 1.1 },
-  { k: 'lovely', n: 'Prachtig', min: 6, popMul: 1.2 },
+  { k: 'grim', n: 'Somber', min: -Infinity },
+  { k: 'plain', n: 'Gewoon', min: 0 },
+  { k: 'cosy', n: 'Gezellig', min: 3 },
+  { k: 'lovely', n: 'Prachtig', min: 6 },
 ];
 
 /** Meer dan dit telt niet mee: tien beelden naast één hut maken hem niet nog mooier. */

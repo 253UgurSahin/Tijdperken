@@ -29,6 +29,9 @@ import { bossComesTonight, liveBoss } from '../game/bosses';
 import { finishedGate, gateHealth, isCharging } from '../game/finale';
 import { planRoadLink, roadLinkCost, unlinkedBuildings } from '../game/roads';
 import { LINK_MAX, offRoadEffect } from '../data/roads';
+import { commonMissing } from '../game/houses';
+import { servesOfType } from '../game/coverage';
+import { SERVICE_BY_KEY } from '../data/services';
 
 export const placed = (k: string): boolean => G.bs.some(b => b.type === k);
 function bestHouse() {
@@ -286,6 +289,8 @@ function finaleRaidStep(raid: number, boss: Foe | null): CoachStep {
     alarm: true,
   };
 }
+// Hoeveel een gebouw bij elkaar kost (alle grondstoffen opgeteld), om de goedkoopste te kiezen
+const costSum = (k: string): number => Object.values(buildCost(k)).reduce((n, v) => n + (v || 0), 0);
 // Moet je even wachten tot er genoeg is? Dan toch iets nuttigs om te doen: meer dorpelingen verzamelen
 // sneller (een woning als die bijna vol zit), en meer akkers houden iedereen gevoed. Alleen wat je kunt betalen.
 function speedUpTip(want: string[]): { text: string; act: CoachAct } | null {
@@ -323,6 +328,31 @@ function speedUpTip(want: string[]): { text: string; act: CoachAct } | null {
   if (far && stores < 2 + G.age / 2 && canMake('storage', G.age) && has(buildCost('storage'))) {
     const where = far === 'wood' ? 'de bomen' : `het ${RES[far].n.toLowerCase()}`;
     return { text: `Een extra opslagplaats bij ${where} scheelt lopen.`, act: bAct('storage') };
+  }
+  // Missen de meeste huizen dezelfde voorziening? Dan groeien ze niet: de goedkoopste bron die je kunt betalen
+  // (pas na akkers, groeves en opslag: eerst wat het volgende tijdperk dichterbij brengt)
+  const miss = commonMissing();
+  // Hoogstens één bron per zes huizen die hem missen: staat er al een (verkeerd), dan helpt nog een niet.
+  // Pas vanaf zes huizen: in een klein dorp gaat het volgende tijdperk voor (de balk in Dorp geeft de tip al).
+  const sources = miss
+    ? G.bs.filter(b => b.type !== 'townhall' && servesOfType(b.type).some(s => s.k === miss.k)).length
+    : 0;
+  if (miss && miss.total >= 6 && miss.homes * 2 > miss.total && sources * 6 < miss.homes) {
+    const source = BKEYS.filter(
+      k =>
+        k !== 'townhall' &&
+        servesOfType(k).some(s => s.k === miss.k) &&
+        canMake(k, G.age) &&
+        ruleAllowsBuilding(k) &&
+        has(buildCost(k)) &&
+        // niet betalen met wat je juist spaart voor het volgende tijdperk
+        !Object.keys(buildCost(k)).some(r => want.includes(r)),
+    ).sort((a, b) => costSum(a) - costSum(b))[0];
+    if (source)
+      return {
+        text: `Huizen zonder ${SERVICE_BY_KEY[miss.k].n.toLowerCase()} groeien niet verder: zet een ${B[source].n.toLowerCase()} tussen je huizen.`,
+        act: bAct(source),
+      };
   }
   // Niets te doen dan wachten tot je dorpelingen genoeg verzameld hebben? Dan gaat het sneller op 2×
   if (G.speed > 0 && G.speed < 2)

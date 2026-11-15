@@ -10,7 +10,8 @@ import { has, pay } from './economy';
 import { hasRule } from './mods';
 import { floater, fxRing } from './fx';
 import { G } from './state';
-import { tierOf } from './charm';
+import { gradePopBonus } from '../data/houses';
+import { gradeOf } from './houses';
 import { toast } from '../ui/hud';
 
 /** Eén regel van een verbetering: [naam, nu, straks]. */
@@ -60,20 +61,19 @@ const ageHp = (b: Building): number => (b.type === 'townhall' && G ? (1 + 0.3 * 
 const towerHp = (b: Building): number => (B[b.type].def && b.type !== 'townhall' ? mul('tower.hp') : 1);
 export const bMaxHp = (b: Building, l = lvlOf(b)): number =>
   B[b.type].hp * ageHp(b) * (1 + 0.35 * l) * mul('bld.hp') * towerHp(b);
-/** Plek voor inwoners zonder de sfeer: groeit met het niveau. */
+/** Plek voor inwoners zonder de welvaart: groeit met het niveau. */
 const basePop = (b: Building, l = lvlOf(b)): number => Math.round((B[b.type].pop || 0) * (1 + 0.4 * l));
 /**
- * Hoeveel inwoners de sfeer erbij geeft (of afhaalt) bij dit huis (zie game/charm.ts). Altijd minstens één,
- * zodat het ook bij een kleine hut te merken is.
+ * Hoeveel inwoners de welvaart erbij geeft (of afhaalt) bij dit huis (zie game/houses.ts). Het stamhuis
+ * groeit niet mee: dat wordt sterker met het tijdperk.
  */
-export function charmPopBonus(b: Building, l = lvlOf(b)): number {
-  const change = tierOf(b).popMul - 1;
-  if (!change || !B[b.type].pop) return 0;
-  return Math.sign(change) * Math.max(1, Math.round(basePop(b, l) * Math.abs(change)));
+export function homePopBonus(b: Building, l = lvlOf(b)): number {
+  if (!B[b.type].pop || b.type === 'townhall') return 0;
+  return gradePopBonus(basePop(b, l), gradeOf(b));
 }
-/** Plek voor inwoners: groeit met het niveau, en met de sfeer in de buurt. */
+/** Plek voor inwoners: groeit met het niveau (betaald), en met de welvaart van het huis (vanzelf). */
 export const bPop = (b: Building, l = lvlOf(b)): number =>
-  B[b.type].pop ? basePop(b, l) + charmPopBonus(b, l) : 0;
+  B[b.type].pop ? basePop(b, l) + homePopBonus(b, l) : 0;
 export const bLight = (b: Building): number => {
   const l = B[b.type].light;
   return l ? l + lvlOf(b) + add('light') : 0;

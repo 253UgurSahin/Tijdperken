@@ -42,6 +42,7 @@ import {
 import { bmap } from '../world/world';
 import { makeUnit } from './people';
 import { WONDER_MODELS } from './wondermodels';
+import { homeExtras, homeGradeOf } from './homes';
 
 // Het gloeiende vlak in de Sterrenpoort (van twee kanten zichtbaar)
 const GATE_DISC = new T3.CircleGeometry(0.68, 32);
@@ -261,7 +262,7 @@ const MODELS: Record<string, ModelFn> = {
       g.add(f);
     }
   },
-  hut(g) {
+  hut(g, _a, b) {
     cy(g, 0.36, 0.42, '#a9845a', 0, 0, 0, 8);
     cn(g, 0.47, 0.55, C.thatch, 0, 0.4, 0, 8);
     cy(g, 0.48, 0.04, '#9a7a48', 0, 0.4, 0, 8); // rand van het rieten dak
@@ -269,6 +270,7 @@ const MODELS: Record<string, ModelFn> = {
     for (let k = 0; k < 3; k++)
       cy(g, 0.03, 0.18, C.woodd, 0.3, 0.03 + k * 0.05, -0.15 + k * 0.02, 5).rotation.x = Math.PI / 2;
     cy(g, 0.02, 0.12, C.woodd, 0, 0.92, 0, 4);
+    homeExtras(g, 'hut', homeGradeOf(b), B.hut.size);
   },
   // ---- Sfeer: versiering (zie data/charm.ts) ----
   flowerbed(g) {
@@ -553,7 +555,7 @@ const MODELS: Record<string, ModelFn> = {
       bx(g, 0.04, 0.3, 0.04, C.woodd, x, 1.17, z);
     flagpole(g, 0, 1.8, 0, 0.4);
   },
-  house(g) {
+  house(g, _a, b) {
     bx(g, 0.74, 0.48, 0.62, C.clay);
     gr(g, 0.84, 0.38, 0.78, C.thatch, 0, 0.48, 0);
     door(g, 0, 0.62, 0.15, 0.26, '#3b2a1a', -0.15);
@@ -563,6 +565,7 @@ const MODELS: Record<string, ModelFn> = {
     bx(g, 0.88, 0.03, 0.05, '#9a7a48', 0, 0.85, 0);
     chim(g, 0.24, 0.6, -0.12);
     cy(g, 0.06, 0.12, C.clay, 0.32, 0, 0.36, 6, 0.04); // pot bij de deur
+    homeExtras(g, 'house', homeGradeOf(b), B.house.size);
   },
   foundry(g) {
     bx(g, 1.2, 0.6, 0.9, C.stone, -0.25, 0, -0.3);
@@ -587,7 +590,7 @@ const MODELS: Record<string, ModelFn> = {
     bx(g, 0.14, 0.2, 0.03, '#3b2a1a', 0, 0, 0.33);
     flagpole(g, 0, 1.7, 0, 0.3);
   },
-  stonehouse(g) {
+  stonehouse(g, _a, b) {
     bx(g, 0.8, 0.62, 0.7, C.stone);
     gr(g, 0.9, 0.4, 0.84, C.slate, 0, 0.62, 0);
     door(g, 0, 0.7, 0.16, 0.28, '#3b2a1a', -0.16);
@@ -596,6 +599,7 @@ const MODELS: Record<string, ModelFn> = {
     bx(g, 0.24, 0.04, 0.1, C.stoned, -0.16, 0, 0.39);
     bx(g, 0.94, 0.03, 0.05, '#3e4652', 0, 1.01, 0);
     chim(g, -0.25, 0.75, -0.1, 0.32, C.stoned);
+    homeExtras(g, 'stonehouse', homeGradeOf(b), B.stonehouse.size);
   },
   smithy(g) {
     bx(g, 1.1, 0.62, 0.8, C.plaster, -0.3, 0, -0.35);
@@ -701,7 +705,7 @@ const MODELS: Record<string, ModelFn> = {
     bx(g, 0.3, 0.4, 0.03, '#3d4247', -0.2, 0, 0.715);
     sp(g, 0.25, '#2e2e30', 0.6, 0.02, 0.65, 0, 0.5); // kolen
   },
-  rowhouse(g) {
+  rowhouse(g, _a, b) {
     bx(g, 0.9, 0.82, 0.62, C.brick);
     gr(g, 0.98, 0.32, 0.74, C.slate, 0, 0.82, 0);
     door(g, 0, 0.62, 0.13, 0.26, '#2b2f35', -0.22);
@@ -711,6 +715,7 @@ const MODELS: Record<string, ModelFn> = {
     bx(g, 0.94, 0.05, 0.66, '#d8cfbe', 0, 0.8, 0); // kroonlijst
     for (const x of [-0.22, 0.22]) bx(g, 0.2, 0.05, 0.1, C.stone, x, 0, 0.36);
     bx(g, 0.92, 0.03, 0.03, '#d8cfbe', 0, 0.4, 0.315);
+    homeExtras(g, 'rowhouse', homeGradeOf(b), B.rowhouse.size);
   },
   streetlamp(g) {
     cy(g, 0.03, 1.25, '#2e3236', 0, 0, 0, 6);
@@ -809,7 +814,7 @@ const MODELS: Record<string, ModelFn> = {
     bx(g, 1.32, 0.05, 1.02, '#9a9d97', -0.2, 0.8, 0.2);
     bx(g, 0.3, 0.38, 0.03, '#3d4247', -0.2, 0, 0.715);
   },
-  apartment(g) {
+  apartment(g, _a, b) {
     bx(g, 0.86, 1.85, 0.86, '#cfc5b2');
     for (let i = 0; i < 6; i++) bx(g, 0.88, 0.11, 0.88, GLASS, 0, 0.2 + i * 0.28, 0);
     bx(g, 0.3, 0.2, 0.3, '#9a9d97', 0.1, 1.85, -0.1);
@@ -819,6 +824,7 @@ const MODELS: Record<string, ModelFn> = {
       bx(g, 0.3, 0.08, 0.02, C.dmetal, 0.2, 0.17 + i * 0.28, 0.535);
     }
     bx(g, 0.9, 0.04, 0.9, '#9a9d97', 0, 1.85, 0);
+    homeExtras(g, 'apartment', homeGradeOf(b), B.apartment.size);
   },
   aa(g) {
     bx(g, 0.84, 0.16, 0.84, C.concrete);
@@ -887,7 +893,7 @@ const MODELS: Record<string, ModelFn> = {
       bx(g, 0.04, 0.3, 0.04, C.metal, Math.cos(an) * 0.12, 0.6, Math.sin(an) * 0.12);
     }
   },
-  towerblock(g) {
+  towerblock(g, _a, b) {
     bx(g, 1.2, 3, 1.2, '#e8edf0');
     for (let i = 0; i < 10; i++) bx(g, 1.22, 0.18, 1.22, GLASS, 0, 0.25 + i * 0.27, 0);
     bx(g, 1.3, 0.1, 1.3, C.white, 0, 3, 0);
@@ -900,6 +906,7 @@ const MODELS: Record<string, ModelFn> = {
       [-0.5, 0.85],
     ])
       sp(g, 0.12, '#6fae58', x, 0.1, z, 0, 1.1);
+    homeExtras(g, 'towerblock', homeGradeOf(b), B.towerblock.size);
   },
   command(g) {
     bx(g, 1.95, 0.12, 1.95, C.concrete);
@@ -1118,7 +1125,7 @@ const MODELS: Record<string, ModelFn> = {
     bx(g, 0.25, 0.12, 0.02, '#c0453a', 0.85, 0.5, 0.75); // gevaarbord
     bx(g, 0.03, 0.5, 0.03, C.woodd, 0.85, 0, 0.74);
   },
-  canalhouse(g) {
+  canalhouse(g, _a, b) {
     // Smal en hoog grachtenpand met trapgevel, witte kozijnen en hijsbalk
     const wit = '#f1ece0';
     bx(g, 0.58, 1.45, 0.78, C.brick, 0, 0, -0.06);
@@ -1145,6 +1152,7 @@ const MODELS: Record<string, ModelFn> = {
     bx(g, 0.04, 0.04, 0.24, C.woodd, 0, 1.9, 0.4);
     bx(g, 0.01, 0.2, 0.01, '#3a3a3a', 0, 1.7, 0.5);
     bx(g, 0.6, 0.03, 0.06, wit, 0, 1.45, 0.3);
+    homeExtras(g, 'canalhouse', homeGradeOf(b), B.canalhouse.size);
   },
   bastion(g) {
     // Laag vijfhoekig vestingwerk met een kanon bovenop
@@ -1226,7 +1234,7 @@ const MODELS: Record<string, ModelFn> = {
     cy(g, 0.12, 0.6, '#dfe3e8', -0.75, 0.15, -0.6, 10, 0.09);
     stack(g, -0.75, 0.75, -0.6, 'steam');
   },
-  arcology(g) {
+  arcology(g, _a, b) {
     // Getrapte woontoren met groene tuinen op elk terras en banden van glas
     const lagen = 4;
     for (let i = 0; i < lagen; i++) {
@@ -1248,6 +1256,7 @@ const MODELS: Record<string, ModelFn> = {
     cy(g, 0.03, 0.6, C.metal, 0, 2.44, 0, 5);
     mk(gIco(0), VIOLETM, g, 0, 3.06, 0, 0.06, 0.06, 0.06);
     bx(g, 0.3, 0.3, 0.03, '#2b2f35', 0, 0, 0.855);
+    homeExtras(g, 'arcology', homeGradeOf(b), B.arcology.size);
   },
   railgun(g) {
     // Geschutskoepel met twee lange rails waartussen een paarse gloed loopt
