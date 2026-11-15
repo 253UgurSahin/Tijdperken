@@ -3,6 +3,30 @@
 Alle wijzigingen uit de "wereldwijde hit"-ronde (analyse → bugfixes → techniek → gameplay → polish), in gewone
 taal. Per bug: wat er misging, hoe het is opgelost en hoe dat is gecontroleerd. Nieuwste bovenaan.
 
+## Versie 0.8.0 (november 2026)
+
+Je dorp werkt nu als een echte city builder, met mooiere graphics en een vlotter spel.
+
+- **Wegen die tellen:** een gebouw werkt pas goed als het via een weg aan het stamhuis ligt. Zonder weg werkt
+  het op ongeveer een derde, en een opslag krijgt dan niets. Je begint met paden rond het stamhuis, en een kort
+  pad naar een nieuw gebouw legt het spel vanzelf aan (2 hout per tegel). Een oranje bordje wijst een los
+  gebouw aan. Je kunt een weg aanklikken om hem weg te halen of te vernieuwen. Klinkers geven +10% en asfalt
+  +20%. Oude spellen krijgen hun wegen gratis.
+- **Bereik van voorzieningen:** waterput, opslag, torens, markt en de nieuwe tempel (bronstijd) hebben een
+  bereik. Met 'Toon bereik' zie je welke huizen eronder vallen.
+- **Huizen die groeien:** een huis gaat vanzelf van vervallen via eenvoudig, net en welvarend naar prachtig als
+  het aan de weg ligt en voorzieningen en sfeer heeft. Elke stap geeft meer inwoners. Gaat de buurt achteruit,
+  dan vervalt het huis weer.
+- **Zichtbare productieketens:** dragers, karren en later vrachtwagens brengen goederen over de weg naar
+  werkplaatsen en bouwplaatsen.
+- **Grond en weer:** waar mensen vaak lopen ontstaan paadjes, regen maakt de grond nat met plassen, en de
+  donkere rand om bevroren meren is weg.
+- **Gevechten:** beschadigde gebouwen roken en branden, verwoeste gebouwen storten in, en treffers en pijlen zijn
+  beter te zien (vijandelijke pijlen hebben weer hun eigen kleur). De gloed van kampvuren is rustiger.
+- **Performance:** groepen dorpelingen en standbeelden worden in één keer getekend (tot ongeveer de helft minder
+  tekenwerk in een grote stad), 's avonds valt er warm licht op de grond, de nabewerking is lichter en de
+  schaduwen zijn scherper, ook als je ver uitzoomt.
+
 ## Versie 0.7.0 (november 2026)
 
 Vooral mooiere graphics, plus een strakkere HUD en een eerlijker begin.
