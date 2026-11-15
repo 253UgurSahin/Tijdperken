@@ -6,6 +6,21 @@ import type * as T3 from 'three';
 export const SNOW_COVER = { value: 0 };
 /** Hoeveel gevallen blad er rond de bomen ligt (0..1): alleen in de herfst (zie seasons.ts). */
 export const LEAF_LITTER = { value: 0 };
+/** Hoe nat de grond en de daken zijn van de regen (0..1). Loopt mee met G.rain, behalve in de winter (dan sneeuwt het). */
+export const RAIN_WET = { value: 0 };
+
+/**
+ * Elk beeldje: laat de natheid meelopen met de regen. Nat worden gaat vlot (zo'n 15 seconden), opdrogen
+ * duurt langer (zo'n minuut). dt in seconden speltijd.
+ */
+export function stepWetGround(dt: number, raining: boolean, winter: boolean): void {
+  const want = raining && !winter ? 1 : 0,
+    tau = want > RAIN_WET.value ? 5 : 20,
+    // (1 - e^(-dt/tijd): even snel bij 30 en bij 120 beeldjes per seconde)
+    k = 1 - Math.exp(-dt / tau);
+  RAIN_WET.value += (want - RAIN_WET.value) * k;
+  if (RAIN_WET.value < 0.001) RAIN_WET.value = 0;
+}
 
 /**
  * Windvlagen (GLSL): een golf die over het land trekt en bomen en gras even harder laat zwaaien.
