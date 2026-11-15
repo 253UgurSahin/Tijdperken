@@ -37,9 +37,10 @@ export const sourceActive = (b: Building): boolean => b.done && b.on !== false &
 
 const indexOf = (k: ServiceKey): number => SERVICES.findIndex(s => s.k === k);
 
-// servicesOf per soort gebouw maar één keer uitrekenen: dit gebeurt elke halve seconde voor elk gebouw
+// servicesOf per soort gebouw maar één keer uitrekenen: dit gebeurt elke halve seconde (en bij het tekenen elk beeldje) voor elk gebouw
 const servesByType = new Map<string, { k: ServiceKey; r: number }[]>();
-function servesOfType(type: string): { k: ServiceKey; r: number }[] {
+/** De voorzieningen van een soort gebouw (dezelfde lijst als servicesOf, maar onthouden: niet aanpassen). */
+export function servesOfType(type: string): { k: ServiceKey; r: number }[] {
   let list = servesByType.get(type);
   if (!list) servesByType.set(type, (list = B[type] ? servicesOf(B[type]) : []));
   return list;
@@ -141,12 +142,24 @@ export function footprintInDisc(
 /** Een afgebouwd huis (het stamhuis telt niet als huis). */
 export const isHome = (b: Building): boolean => b.done && !!B[b.type].pop && b.type !== 'townhall';
 
+/** Hoeveel huizen er in de cirkel van voorziening k van dit gebouw liggen (0 als het die niet geeft). */
+export function homesInDisc(src: Building, k: ServiceKey): number {
+  const disc = servesOfType(src.type).find(s => s.k === k);
+  if (!disc) return 0;
+  const d = B[src.type],
+    cx = src.x + d.size / 2,
+    cy = src.y + d.size / 2;
+  let n = 0;
+  for (const h of G.bs) if (isHome(h) && footprintInDisc(cx, cy, disc.r, h.x, h.y, B[h.type].size)) n++;
+  return n;
+}
+
 /** Hoeveel huizen er in een van de cirkels van dit gebouw liggen. */
 export function homesCoveredBy(src: Building): number {
   const d = B[src.type],
     cx = src.x + d.size / 2,
     cy = src.y + d.size / 2,
-    discs = servicesOf(d);
+    discs = servesOfType(src.type);
   let n = 0;
   for (const h of G.bs) {
     if (!isHome(h)) continue;

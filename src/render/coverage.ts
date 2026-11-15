@@ -4,9 +4,18 @@ import type { Building, GameState } from '../types';
 import { H, W } from '../config';
 import { store } from '../core/store';
 import { B } from '../data/buildings';
-import { SERVICES, isServiceKey, servicesOf } from '../data/services';
+import { SERVICE_BY_KEY, isServiceKey } from '../data/services';
 import type { ServiceKey } from '../data/services';
-import { coverGrid, coverTip, coverVersion, footprintInDisc, isHome, sourceActive } from '../game/coverage';
+import {
+  coverGrid,
+  coverTip,
+  coverVersion,
+  footprintInDisc,
+  isHome,
+  servesOfType,
+  sourceActive,
+} from '../game/coverage';
+import { darkness } from '../game/time';
 import { ghostPos } from '../game/placement';
 import { G, bById, sel } from '../game/state';
 import { mouse } from '../input/input';
@@ -40,9 +49,13 @@ function smoothEdges(shader: T3.Shader): void {
     `float cover = texture2D( map, vUv ).a;
     float inside = smoothstep( 0.44, 0.56, cover );
     float rim = inside * ( 1.0 - smoothstep( 0.58, 0.74, cover ) );
-    diffuseColor.a *= inside * 0.24 + rim * 0.42;`,
+    diffuseColor.a *= inside * uFill + rim * 0.42;`,
   );
+  // De vulling is onverlicht: 's nachts zachter, anders is het vlak het helderste van het beeld (de rand blijft)
+  shader.fragmentShader = 'uniform float uFill;\n' + shader.fragmentShader;
+  shader.uniforms.uFill = fillStrength;
 }
+const fillStrength = { value: 0.24 };
 
 function makePlane(): void {
   if (plane) {
@@ -100,7 +113,7 @@ function fillTexture(k: ServiceKey): void {
       pixels[(row + x) * 4 + 3] = sum * 16 - (sum >> 4); // 16 → 255
     }
   }
-  plane!.material.color.set(SERVICES.find(s => s.k === k)!.c);
+  plane!.material.color.set(SERVICE_BY_KEY[k].c);
   tex!.needsUpdate = true;
   coverRebuilds++;
 }
@@ -109,12 +122,12 @@ function fillTexture(k: ServiceKey): void {
 function shownService(): ServiceKey | null {
   if (store.coverView && isServiceKey(store.coverView)) return store.coverView;
   if (store.placing && B[store.placing]) {
-    const list = servicesOf(B[store.placing]);
+    const list = servesOfType(store.placing);
     if (list.length) return list[0].k;
   }
   const sb = sel.b ? bById.get(sel.b) : undefined;
   if (sb) {
-    const list = servicesOf(B[sb.type]);
+    const list = servesOfType(sb.type);
     if (list.length) return list[0].k;
   }
   return null;
@@ -148,7 +161,7 @@ export function drawCoverage(): void {
     store.coverView = null;
     lastSel = sel.b;
     const sb = sel.b ? bById.get(sel.b) : undefined;
-    if (sb && servicesOf(B[sb.type]).length && sb.type !== 'townhall') coverTip();
+    if (sb && servesOfType(sb.type).length && sb.type !== 'townhall') coverTip();
   }
   drawSelectedHome();
   const k = shownService();
@@ -163,20 +176,18 @@ export function drawCoverage(): void {
     shownVersion = coverVersion();
   }
   plane!.visible = true;
-  const colour = SERVICES.find(s => s.k === k)!.c,
+  fillStrength.value = 0.24 - 0.09 * (darkness() / 0.78);
+  const colour = SERVICE_BY_KEY[k].c,
     grid = coverGrid(k);
 
   // Plaats je een voorziening met de muis: de cirkel van het voorbeeld en welke huizen er nieuw bij komen
   let ghost: { cx: number; cy: number; r: number } | null = null;
   if (store.placing && mouse.in && !mouse.touch) {
     const d = B[store.placing],
-      serves = servicesOf(d);
+      serves = servesOfType(store.placing);
     if (serves.length) {
       const [gx, gy] = ghostPos();
-      for (const s of serves) {
-        const c = SERVICES.find(x => x.k === s.k)!.c;
-        rangeAt(gx + d.size / 2, gy + d.size / 2, s.r, c);
-      }
+      for (const s of serves) rangeAt(gx + d.size / 2, gy + d.size / 2, s.r, SERVICE_BY_KEY[s.k].c);
       const mine = serves.find(s => s.k === k);
       if (mine) ghost = { cx: gx + d.size / 2, cy: gy + d.size / 2, r: mine.r };
     }
@@ -201,12 +212,16 @@ export function drawCoverage(): void {
     left--;
   }
 
-  // Een gekozen gebouw met een bereik: zijn cirkel (een gekozen huis: zie drawSelectedHome)
+  // Een gekozen gebouw met een bereik: een scherpe cirkel om elke voorziening (de zachte rand van het vlak is
+  // wat hoekig). Niet waar render.ts al de witte verdedigingscirkel even groot tekent: dat zou dubbel zijn.
+  // Een gekozen huis: zie drawSelectedHome.
   const sb = sel.b ? bById.get(sel.b) : undefined;
   if (!sb || store.placing || isHome(sb)) return;
   const sd = B[sb.type];
-  for (const s of servicesOf(sd))
-    rangeAt(sb.x + sd.size / 2, sb.y + sd.size / 2, s.r, SERVICES.find(x => x.k === s.k)!.c);
+  for (const s of servesOfType(sb.type)) {
+    if (SERVICE_BY_KEY[s.k].age > G.age || (sd.def && s.r === sd.def.r)) continue;
+    rangeAt(sb.x + sd.size / 2, sb.y + sd.size / 2, s.r, SERVICE_BY_KEY[s.k].c);
+  }
 }
 
 /** Een gekozen huis: de cirkels van alles wat het bereikt, elk in de kleur van zijn voorziening. */
@@ -219,8 +234,8 @@ function drawSelectedHome(): void {
     const d = B[src.type],
       cx = src.x + d.size / 2,
       cy = src.y + d.size / 2;
-    for (const s of servicesOf(d)) {
-      const def = SERVICES.find(x => x.k === s.k)!;
+    for (const s of servesOfType(src.type)) {
+      const def = SERVICE_BY_KEY[s.k];
       if (def.age > G.age || !footprintInDisc(cx, cy, s.r, sb.x, sb.y, size)) continue;
       rangeAt(cx, cy, s.r, def.c);
       ringAt(cx, cy, 0.5 + d.size * 0.35, def.c, 0.85); // en een ring om de bron zelf

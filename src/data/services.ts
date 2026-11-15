@@ -29,6 +29,12 @@ export const SERVICE_BIT = Object.fromEntries(SERVICES.map((s, i) => [s.k, 1 << 
   number
 >;
 
+/** Elke voorziening op sleutel, zodat je niet steeds in de lijst hoeft te zoeken (bijv. bij het tekenen). */
+export const SERVICE_BY_KEY = Object.fromEntries(SERVICES.map(s => [s.k, s])) as Record<
+  ServiceKey,
+  ServiceDef
+>;
+
 /** Is dit de sleutel van een voorziening? */
 export function isServiceKey(k: string): k is ServiceKey {
   return SERVICES.some(s => s.k === k);

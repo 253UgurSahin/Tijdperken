@@ -58,8 +58,8 @@ import { isNight } from '../game/time';
 import { charmOf, farmBoostFor, tierOf } from '../game/charm';
 import { charmFrom } from '../data/charm';
 import { charmText } from './buildmenu';
-import { SERVICES, servicesOf, servicesUnlocked } from '../data/services';
-import { coverVersion, homesCoveredBy, isHome, servicesAt } from '../game/coverage';
+import { SERVICE_BY_KEY, servicesUnlocked } from '../data/services';
+import { coverVersion, homesInDisc, isHome, servesOfType, servicesAt, sourceActive } from '../game/coverage';
 
 /**
  * Wat de sfeer met dit gebouw doet: bij een huis hoe gezellig het is, bij versiering of een fabriek hoeveel
@@ -129,13 +129,12 @@ export let selCmds: string | null = null,
  */
 function serviceLine(b: Building): string {
   if (!b.done) return '';
-  const d = B[b.type];
   let h = '';
   if (isHome(b)) {
     const here = servicesAt(b);
     let missing = '';
     const chips = servicesUnlocked(G.age).map(k => {
-      const s = SERVICES.find(x => x.k === k)!,
+      const s = SERVICE_BY_KEY[k],
         ok = here.includes(k);
       if (!ok && !missing) missing = k;
       return `<span class="svc ${ok ? 'ok' : 'no'}" title="${esc(ok ? s.n : `Geen ${s.n.toLowerCase()}: bouw ${s.need} in de buurt`)}">${ico(ok ? '✓' : '✕')}${s.n}</span>`;
@@ -145,20 +144,28 @@ function serviceLine(b: Building): string {
       : '';
     return `<div class="svcchips">${chips.join('')}${show}</div>`;
   }
-  const homes = homesCoveredBy(b),
-    who = homes === 1 ? '1 huis' : `${homes} huizen`;
-  for (const s of servicesOf(d)) {
-    const def = SERVICES.find(x => x.k === s.k)!;
-    if (def.age > G.age) continue;
-    h += `<div class="statline svcline" style="--svc:${def.c}"><i class="dot"></i><span>${def.n} voor huizen binnen ${fmtDec(s.r)} tegels · ${who}</span><button class="svcbtn${store.coverView === s.k ? ' on' : ''}" data-b="cover" data-k="${s.k}">Toon bereik</button></div>`;
+  // Alleen de voorzieningen van dit tijdperk; de eerste ervan zie je vanzelf (zie shownService in render/coverage.ts)
+  const mine = servesOfType(b.type).filter(s => SERVICE_BY_KEY[s.k].age <= G.age),
+    shown = mine.find(s => s.k === store.coverView) || mine[0],
+    off = !sourceActive(b);
+  for (const s of mine) {
+    const def = SERVICE_BY_KEY[s.k],
+      homes = homesInDisc(b, s.k),
+      who = off ? 'staat uit' : homes === 1 ? '1 huis' : `${homes} huizen`;
+    // Een knop alleen als er iets te kiezen is: bij één voorziening staat dat bereik al in beeld
+    const btn =
+      mine.length > 1
+        ? `<button class="svcbtn${s === shown ? ' on' : ''}" data-b="cover" data-k="${s.k}">Toon bereik</button>`
+        : '';
+    h += `<div class="statline svcline" style="--svc:${def.c}"><i class="dot"></i><span>${def.n} voor huizen binnen ${fmtDec(s.r)} tegels · ${who}</span>${btn}</div>`;
   }
   return h;
 }
 /** Wat er in serviceLine verandert: een andere cirkel ergens, de knop, of een huis erbij. */
 function coverSig(b: Building): string {
-  const d = B[b.type];
-  if (!isHome(b) && !servicesOf(d).length) return '';
-  return `|${store.coverView}${coverVersion()}${isHome(b) ? '' : homesCoveredBy(b)}`;
+  if (!isHome(b) && !servesOfType(b.type).length) return '';
+  const counts = isHome(b) ? '' : servesOfType(b.type).map(s => homesInDisc(b, s.k));
+  return `|${store.coverView}${coverVersion()}${sourceActive(b)}${counts}`;
 }
 // Kop van het paneel bij soldaten: één met zijn rangstreepjes, "3 × Speerdrager" of (gemengd) "Leger"
 function armyTitle(us: Unit[], oneKind: boolean): string {
@@ -634,7 +641,9 @@ export function insHandler(e: MouseEvent) {
       });
   } else if (t.dataset.b === 'cover' && t.dataset.k) {
     // Het bereik van een voorziening aan of uit (zie render/coverage.ts)
-    store.coverView = store.coverView === t.dataset.k ? null : t.dataset.k;
+    // Bij een huis zet dezelfde knop het weer uit; bij een voorziening kies je welke van zijn cirkels je ziet
+    const home = !!b && isHome(b);
+    store.coverView = home && store.coverView === t.dataset.k ? null : t.dataset.k;
     store.uiDirty = true;
   } else if (t.dataset.b === 'train1') {
     G.trainQ++;

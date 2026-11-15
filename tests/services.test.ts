@@ -5,6 +5,7 @@ import { canMake } from '../src/data/succession';
 import {
   SERVICES,
   SERVICE_BIT,
+  SERVICE_BY_KEY,
   diffSources,
   inDisc,
   isServiceKey,
@@ -103,5 +104,15 @@ describe('voorzieningen', () => {
     expect(B.temple.cat).toBe('deco');
     expect(B.temple.age).toBe(1);
     expect(servicesOf(B.temple)).toEqual([{ k: 'faith', r: 9 }]);
+  });
+
+  it('elke voorziening is ook op sleutel te vinden', () => {
+    for (const s of SERVICES) expect(SERVICE_BY_KEY[s.k]).toBe(s);
+  });
+
+  it('het stamhuis heeft twee cirkels van verschillende grootte', () => {
+    const list = servicesOf(B.townhall);
+    expect(list.map(s => s.k)).toEqual(['food', 'safety']);
+    expect(list[0].r).toBeGreaterThan(list[1].r);
   });
 });
