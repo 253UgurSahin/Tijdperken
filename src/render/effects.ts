@@ -241,6 +241,28 @@ function addChip(x: number, y: number, z: number, col: string) {
   chips.setColorAt(i, chipC.set(col));
 }
 
+// Pijlen: een donkere houten schacht (een lichte streep las als een bleek blokje)
+const ARROW_WOOD = '#6b5236';
+// Lichtspoor: een blokje dat vanaf de kogel naar achteren loopt (lengte 1, dus schaal z = lengte)
+const TRACER_G = new T3.BoxGeometry(1, 1, 1).translate(0, 0, -0.5);
+function tracerMesh() {
+  const m = new T3.Mesh(
+    TRACER_G,
+    new T3.MeshBasicMaterial({
+      color: '#fff3c4',
+      transparent: true,
+      blending: T3.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    }),
+  );
+  m.renderOrder = 5;
+  return m;
+}
+// Hoogstens zoveel vonkjes achter lichtsporen per beeldje, en alleen om het andere beeldje
+const MAX_TRACER_EMBERS = 24;
+let emberFrame = false;
+
 let lastFxT = 0,
   smokeT = 0; // tijd sinds het laatste rookpluimpje van een kanonskogel
 export function drawFx() {
@@ -252,12 +274,16 @@ export function drawFx() {
   smokeT += G.speed ? dt : 0;
   drawMeteor();
   drawMarks();
+  // Vanaf het buskruit zijn kogels lichtsporen; daarvoor pijlen van hout
+  const tracers = G.age >= 4;
+  let embers = MAX_TRACER_EMBERS;
+  emberFrame = !emberFrame;
   for (const p of G.proj as DrawnProjectile[]) {
-    const m = pool(p.big ? 'shell' : 'arrow', () =>
-      p.big
-        ? new T3.Mesh(gIco(0), mat('#2a2a2a'))
-        : new T3.Mesh(GB, new T3.MeshBasicMaterial({ color: '#fff3c4' })),
-    );
+    const m = p.big
+      ? pool('shell', () => new T3.Mesh(gIco(0), mat('#2a2a2a')))
+      : tracers
+        ? pool('tracer', tracerMesh)
+        : pool('arrow', () => new T3.Mesh(GB, new T3.MeshBasicMaterial({ color: ARROW_WOOD })));
     const [px, py] = smoothPos(p);
     if (p.sx == null) {
       p.sx = px;
@@ -279,8 +305,29 @@ export function drawFx() {
       // Pijlen en kogels wijzen in de richting van hun baan
       m.rotation.order = 'YXZ';
       m.rotation.set(-Math.atan(slope), Math.atan2(p.lx - px, p.ly - py), 0);
-      m.scale.set(0.03, 0.03, arc ? 0.38 : 0.5);
-      m.material.color.set(p.col || '#fff3c4');
+      if (tracers) {
+        // Een dun, fel streepje dat achter de kogel aan hangt, met af en toe een gloeiend vonkje erachter
+        m.scale.set(0.022, 0.022, 0.7);
+        m.material.color.set(p.col || '#fff3c4');
+        if (emberFrame && embers > 0 && G.speed) {
+          embers--;
+          const back = 0.35 / Math.max(0.01, Math.hypot(p.lx - px, p.ly - py));
+          emit(
+            LAYER.glow,
+            px - (p.lx - px) * back,
+            y,
+            py - (p.ly - py) * back,
+            0,
+            0,
+            0,
+            0.16,
+            0.05,
+            0.01,
+            0xffd890,
+            0.7,
+          );
+        }
+      } else m.scale.set(0.03, 0.03, arc ? 0.38 : 0.5);
     }
   }
   if (smokeT >= 1 / 60) smokeT = 0;

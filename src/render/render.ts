@@ -14,6 +14,7 @@ import { drawFinaleFx } from './finalefx';
 import { stepCinematic } from './cinematic';
 import { stepFireworks } from './fireworks';
 import { stepDying } from './animate';
+import { stepBattleFx } from './battlefx';
 import { stepParticles } from './particles';
 import { drawAmbient } from './ambient';
 import { drawPlacement } from './ghost';
@@ -87,6 +88,7 @@ export function render() {
   updateGroundShade(store.TM, b => bRec.get(b.id)?.h);
   updateScatter();
   stepDying();
+  stepBattleFx();
   drawFx();
   drawFinaleFx(); // lichtzuil uit de sterrenpoort tijdens de finale
   drawRain();

@@ -63,7 +63,11 @@ export const setDetail = (on: boolean) => (detail = on);
 type SolidMesh = T3.Mesh<T3.BufferGeometry, T3.MeshStandardMaterial>;
 // Zachte overgang van 0 naar 1 (zoals smoothstep in een shader)
 const smooth01 = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
-const VCMAT = new T3.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.88 });
+export const VCMAT = new T3.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.88 });
+// Een figuur dat geraakt wordt licht heel even wit op. Gloed is een uniform: dezelfde shader, dus niets opnieuw bouwen.
+export const VCMAT_HIT = VCMAT.clone();
+VCMAT_HIT.emissive.set('#ffffff');
+VCMAT_HIT.emissiveIntensity = 0.6;
 
 // Een klein plaatje met korrel (toevallig grijs), voor de structuur op muren en daken
 const GRAIN = (() => {
