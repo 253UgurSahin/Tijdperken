@@ -1196,3 +1196,45 @@ body.v2 #bigMap #mapBig {
 .charmbar .why {
   margin: 4px 0 0;
 }
+/* Welvaart van een huis (zie gradeCard in ui/inspector.ts): de trede in zijn eigen kleur, met stippen */
+.gradecard {
+  margin-top: 8px;
+  padding: 7px 9px 6px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--grade) 35%, transparent);
+  background: color-mix(in srgb, var(--grade) 7%, transparent);
+}
+.gradecard .gradehead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.gradecard .gradehead b {
+  color: var(--grade);
+}
+.gradecard .gradedots {
+  font: 11px var(--f-mono);
+  letter-spacing: 2px;
+  color: var(--grade);
+}
+.gradecard .svcchips {
+  margin-top: 5px;
+}
+.gradecard .statline {
+  margin-top: 5px;
+}
+.svc.charmchip {
+  color: var(--ink-3);
+}
+.svc.charmchip.ok {
+  color: #e0709a;
+  border-color: color-mix(in srgb, #e0709a 35%, transparent);
+  background: color-mix(in srgb, #e0709a 10%, transparent);
+}
+/* De welvaartbalk in het paneel Dorp: de kleuren komen per trede uit data/houses.ts */
+.welvaartbar .bar i {
+  min-width: 4px;
+}

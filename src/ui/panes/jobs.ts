@@ -11,8 +11,9 @@ import { resetV } from '../../input/selection';
 import { costHTML, gem } from '../format';
 import { setHTML, sigs } from '../header';
 import { CB } from '../inspector';
-import { charmSummary } from '../../game/charm';
-import { CHARM_TIERS } from '../../data/charm';
+import { commonMissing, gradeSummary, unlinkedHomes } from '../../game/houses';
+import { HOUSE_GRADES } from '../../data/houses';
+import { SERVICE_BY_KEY } from '../../data/services';
 import { $ } from '../../util/dom';
 
 // Staan de vaste taken open? null = nog niet aangeklikt: dan open zodra iemand een vaste taak heeft.
@@ -39,7 +40,8 @@ export function renderJobs() {
     inside,
     Object.keys(avail).join(),
     open,
-    charmSummary(),
+    gradeSummary(),
+    welvaartHint(),
   ]);
   const adv = G.age >= 1 || G.vs.length >= 12;
   // Eén regel per taak: wie er nu op staan, met min en plus
@@ -64,34 +66,43 @@ export function renderJobs() {
         : '<p class="why" style="margin:6px 0 0">Je dorpelingen kiezen zelf het werk dat het hardst nodig is.</p>'
     }
     <div class="cmd" style="margin-top:10px">${CB('data-act="train"', '☺', 'Trainen', { dis: !(popNow() < popCap() && G.res.food >= trainCost()), cost: costHTML({ food: trainCost() }, true), tip: 'Train een dorpeling in het stamhuis' })}${adv ? CB('data-act="idle"', '☉', 'Zonder werk', { tip: 'Selecteer wie niets doet' }) + CB('data-act="auto"', '↻', G.autoTrain ? 'Vanzelf trainen: aan' : 'Vanzelf trainen: uit', { on: G.autoTrain, tip: 'Het stamhuis traint vanzelf dorpelingen als er voedsel en plek is' }) : ''}</div>
-    <div class="statline ${popNow() >= popCap() && G.bs.some(b => b.type !== 'townhall' && B[b.type].pop && b.done) ? 'warn' : ''}"><i class="dot"></i>${popNow() >= popCap() ? (G.bs.some(b => b.type !== 'townhall' && B[b.type].pop) ? 'Vol: bouw meer woningen' : 'Bouw een hut voor meer inwoners') : G.training ? `Traint${G.trainQ ? ` · ${G.trainQ} in wachtrij` : ''}` : `${inside ? inside + ' binnen · ' : ''}${G.vs.filter(v => !v.hidden && v.state === 'idle').length} stilstaand`}</div>${charmBar()}`,
+    <div class="statline ${popNow() >= popCap() && G.bs.some(b => b.type !== 'townhall' && B[b.type].pop && b.done) ? 'warn' : ''}"><i class="dot"></i>${popNow() >= popCap() ? (G.bs.some(b => b.type !== 'townhall' && B[b.type].pop) ? 'Vol: bouw meer woningen' : 'Bouw een hut voor meer inwoners') : G.training ? `Traint${G.trainQ ? ` · ${G.trainQ} in wachtrij` : ''}` : `${inside ? inside + ' binnen · ' : ''}${G.vs.filter(v => !v.hidden && v.state === 'idle').length} stilstaand`}</div>${welvaartBar()}`,
   );
 }
 
 /**
- * Hoe gezellig je huizen zijn, als een gekleurde balk met een korte uitleg eronder (zie game/charm.ts).
+ * Hoe welvarend je huizen zijn, als een gekleurde balk met een korte tip eronder (zie game/houses.ts).
  * Pas vanaf drie huizen: daarvoor is er nog weinig te kiezen.
  */
-function charmBar(): string {
-  const count = charmSummary(),
-    total = count.grim + count.plain + count.cosy + count.lovely;
+function welvaartBar(): string {
+  const count = gradeSummary(),
+    total = HOUSE_GRADES.reduce((n, g) => n + count[g.k], 0);
   if (total < 3) return '';
-  const parts = CHARM_TIERS.slice()
+  // Van prachtig naar vervallen, zoals een ranglijst
+  const shown = HOUSE_GRADES.slice()
     .reverse()
-    .filter(t => count[t.k])
-    .map(t => `<i class="${t.k}" style="flex:${count[t.k]}" title="${t.n}: ${count[t.k]}"></i>`)
+    .filter(g => count[g.k]);
+  const parts = shown
+    .map(g => `<i style="flex:${count[g.k]};background:${g.c}" title="${g.n}: ${count[g.k]}"></i>`)
     .join('');
-  const words = CHARM_TIERS.slice()
-    .reverse()
-    .filter(t => count[t.k])
-    .map(t => `${count[t.k]} ${t.n.toLowerCase()}`)
-    .join(' · ');
-  const hint = count.grim
-    ? 'Zet versiering tussen huizen en fabrieken'
-    : count.plain >= count.cosy + count.lovely
-      ? 'Versiering (tabblad Sfeer) geeft huizen meer plek'
-      : '';
-  return `<div class="charmbar" aria-label="Sfeer in je dorp: ${words}"><div class="lbl">Sfeer <span>${words}</span></div><div class="bar">${parts}</div>${hint ? `<p class="why">${hint}</p>` : ''}</div>`;
+  const words = shown.map(g => `${count[g.k]} ${g.n.toLowerCase()}`).join(' · ');
+  const hint = welvaartHint();
+  return `<div class="charmbar welvaartbar" aria-label="Welvaart van je huizen: ${words}"><div class="lbl">Welvaart <span>${words}</span></div><div class="bar">${parts}</div>${hint ? `<p class="why">${hint}</p>` : ''}</div>`;
+}
+
+/** Eén tip voor de meeste huizen: eerst een weg, dan de voorziening die het vaakst mist, dan versiering. */
+function welvaartHint(): string {
+  const loose = unlinkedHomes();
+  if (loose >= 2) return `${loose} huizen liggen niet aan de weg en vervallen: leg een pad`;
+  const miss = commonMissing();
+  if (miss && miss.homes >= 2 && miss.homes * 3 >= miss.total) {
+    const s = SERVICE_BY_KEY[miss.k];
+    return `Veel huizen missen ${s.n.toLowerCase()}: zet ${s.need} tussen je huizen`;
+  }
+  const count = gradeSummary();
+  if (count.basic + count.neat > count.well + count.rich)
+    return 'Versiering (tabblad Sfeer) laat huizen verder groeien';
+  return '';
 }
 $('#jobs').addEventListener('click', e => {
   // Vaste taken open- of dichtklappen: onthouden voordat de browser het blok omzet

@@ -200,6 +200,10 @@ export interface Building extends Hittable {
   saving?: string;
   /** Hoeft geen weg: een gebouw uit een oude opslag dat er niet aan te leggen was (zie game/roads.ts). */
   roadFree?: boolean;
+  /** Welvaart van een huis, 0 (vervallen) tot 4 (prachtig); -1 = uit een oude opslag (zie game/houses.ts). */
+  grade?: number;
+  /** Klokje van de welvaart: omhoog als het huis groeit, omlaag (negatief) als het vervalt. */
+  gradeT?: number;
 }
 
 export type VTarget = { k: 'node'; i: number } | { k: 'farm'; b: Building } | { k: 'site'; b: Building };

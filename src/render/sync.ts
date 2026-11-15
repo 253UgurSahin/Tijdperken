@@ -27,6 +27,7 @@ import {
 import { BOSS_SCALE } from '../data/bosses';
 import { aimTurrets, findTurrets, type TurretState } from './turrets';
 import { makeBuilding, makeCamp, wallMask } from './models';
+import { homeGradeOf } from './homes';
 import { hideNode, nodesNeedUpdate, rebuildNodes } from './nodes';
 import { FOEK, makeUnit, makeVillager } from './people';
 import { animEntity, clearDying, initAnim, startDeath, type Animated } from './animate';
@@ -332,7 +333,8 @@ function chimneySmoke(r: BuildingRec, b: Building, d: BuildingDef, dt: number) {
   for (const c of r.chims) {
     const style = c[3];
     if (style === 'house') {
-      if (house)
+      // Een vervallen huis stookt niet meer: geen rook uit de schoorsteen
+      if (house && !(d.pop && homeGradeOf(b) === 0))
         emit(
           LAYER.soft,
           c[0],
@@ -577,13 +579,17 @@ export function syncBuildings() {
       '|' +
       (b.done ? 1 : 0) +
       '|' +
-      (d.wall ? wallMask(b) : '');
+      (d.wall ? wallMask(b) : '') +
+      '|' +
+      (d.pop && b.type !== 'townhall' ? homeGradeOf(b) : '');
     let r = bRec.get(b.id);
     if (!r || r.key !== key) {
       // Net opgeleverd, of het stamhuis krijgt het uiterlijk van een nieuw tijdperk: dan veert het even op
       const justFinished = r && !r.done && b.done;
       const newLook = r && r.done && b.done && b.type === 'townhall' && r.key.split('|')[1] !== String(G.age);
-      const pops = justFinished || newLook;
+      // Een huis dat groeit of vervalt (zie game/houses.ts) veert ook op, zodat je de verandering ziet
+      const newGrade = r && r.done && b.done && r.key.split('|')[4] !== key.split('|')[4];
+      const pops = justFinished || newLook || newGrade;
       if (r) {
         BG3.remove(r.g);
         disposeMerged(r.g);

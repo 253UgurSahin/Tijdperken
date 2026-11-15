@@ -147,6 +147,9 @@ export function serialize(): string {
       q: b.q,
       rally: b.rally,
       rf: b.roadFree ? 1 : undefined,
+      // Welvaart van een huis en zijn klokje (niet 'gt': dat is het klokje van een centrale)
+      gr: b.grade,
+      grt: b.gradeT ? Math.round(b.gradeT) : undefined,
     })),
     // Het nummer (id) bewaren we, zodat groepen na het laden nog kloppen; kills = overwinningen (veteranen)
     vs: G.vs.map(v => ({ x: v.x, y: v.y, name: v.name, job: v.job, hp: v.hp, id: v.id })),
@@ -202,6 +205,10 @@ interface SaveData {
     lvl: number;
     /** 1: dit gebouw hoeft geen weg (zie Building.roadFree). */
     rf?: number;
+    /** Welvaart van een huis (zie Building.grade). Ontbreekt bij oudere opslag: dan meteen de goede trede. */
+    gr?: number;
+    /** Klokje van de welvaart, in hele seconden. */
+    grt?: number;
   })[];
   /** Opslag van vóór de groepen heeft geen id bij dorpelingen, en van vóór de veteranen geen kills. */
   vs: { x: number; y: number; name: string; job: string; hp: number; id?: number }[];
@@ -377,11 +384,14 @@ export function deserialize(str: string): boolean {
   amt.set(new Uint16Array(unpackArray(s.amt, amt.length * 2, packed).buffer));
   buildLists();
   bById.clear();
-  for (const { rf, ...o } of s.bs) {
+  for (const { rf, gr, grt, ...o } of s.bs) {
     const d = B[o.type];
     const b: Building = {
       ...o,
       roadFree: !!rf,
+      // Een huis uit een oude opslag (-1) krijgt meteen zijn welvaart, zodat een oude stad niet krimpt
+      grade: typeof gr === 'number' ? gr : o.done && d.pop ? -1 : undefined,
+      gradeT: grt || 0,
       kind: 'b',
       cd: 0,
       ct: 0,

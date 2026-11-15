@@ -35,13 +35,6 @@ export const tierOf = (b: Building): CharmTier => charmTier(charmOf(b));
 /** Zoveel keer sneller oogst deze akker door hulp uit de buurt (1 = gewoon). */
 export const farmBoostFor = (b: Building): number => farmBoost.get(b.id) || 1;
 
-/** Hoeveel huizen er per trede zijn (voor het overzicht bij het stamhuis). */
-export function charmSummary(): Record<CharmTier['k'], number> {
-  const out = { grim: 0, plain: 0, cosy: 0, lovely: 0 };
-  for (const b of G.bs) if (homeCharm.has(b.id)) out[tierOf(b).k]++;
-  return out;
-}
-
 /**
  * Eén keer uitleggen hoe sfeer werkt: als je vierde huis klaar is en je nog geen versiering hebt. Daarna niet
  * meer (de uitleg staat ook bij elk huis in het infopaneel).
@@ -52,7 +45,7 @@ export function charmTip(done: Building): void {
   if (homes < 4 || G.bs.some(b => B[b.type].cat === 'deco')) return;
   markTip('charm');
   toast(
-    'Tip: zet een bloemperk of totempaal tussen je huizen (tabblad Sfeer, toets G). Gezellige huizen hebben plek voor meer mensen; fabrieken maken ze juist somber.',
+    'Tip: zet een bloemperk of totempaal tussen je huizen (tabblad Sfeer, toets G). Gezellige huizen kunnen groeien tot welvarend en prachtig (en hebben dan plek voor meer mensen); fabrieken maken ze juist somber.',
     'good',
   );
 }

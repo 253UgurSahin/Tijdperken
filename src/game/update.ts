@@ -18,6 +18,7 @@ import { advanceClock, isNight } from './time';
 import { add, applyBonusChange, mul } from './bonus';
 import { hasRule } from './mods';
 import { bMaxHp, researchTime } from './upgrades';
+import { updateGrades } from './houses';
 import { vUpdate } from './villagers';
 import { sigs } from '../ui/header';
 import { note, toast } from '../ui/hud';
@@ -88,6 +89,7 @@ export function update(dt: number) {
   if (store.periodic <= 0) {
     store.periodic = 0.5;
     computeCaches();
+    updateGrades(0.5); // huizen groeien of vervallen langzaam (zie game/houses.ts)
     checkVictory(); // een gekozen doel gehaald, zoals 30 nachten of de Gouden Eeuw?
   }
   store.slowP -= dt;

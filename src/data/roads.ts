@@ -31,6 +31,8 @@ export function roadRateFor(tier: number): number {
 
 /** Wat er misgaat als dit gebouw niet aan de weg ligt, in gewone woorden (voor het infopaneel en de coach). */
 export function offRoadEffect(d: BuildingDef): string {
+  if (d.pop) return 'groeit niet en vervalt';
+  if (d.market) return 'telt niet als markt voor de huizen';
   if (d.drop) return 'dorpelingen brengen hier niets heen';
   if (d.conv || d.pump || d.gen || d.train || d.work) return 'werkt maar op een derde';
   return 'ligt los van het dorp';
