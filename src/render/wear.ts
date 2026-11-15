@@ -18,10 +18,19 @@ import { R3 } from './scene';
 
 // 2 vakjes per tegel, net als de schaduwkaart: een smal paadje blijft smal, met een zachte rand
 const RES = 2;
+// Stukken van 16 × 16 tegels: alleen waar iemand liep worden de bytes opnieuw geschreven
+const CHUNK = 16,
+  CHUNKS_PER_FRAME = 24;
 let grid = createWearGrid(W, H, RES),
   bytes = new Uint8Array(grid.gw * grid.gh),
-  // Per tegel: was hij kaal (zie wearAt) toen het gras voor het laatst werd neergezet?
-  wornSeen = new Uint8Array(W * H);
+  // Per tegel: is hij nu kaal (zie wearAt), en was hij dat toen het gras voor het laatst werd neergezet?
+  wornNow = new Uint8Array(W * H),
+  wornSeen = new Uint8Array(W * H),
+  chunksW = Math.ceil(W / CHUNK),
+  dirtyChunk = new Uint8Array(chunksW * Math.ceil(H / CHUNK));
+// Hoeveel tegels anders zijn dan bij het laatste neerzetten van het gras, en welke stukken nog geschreven moeten
+let flipsPending = 0;
+const dirtyList: number[] = [];
 function makeWear(): T3.DataTexture {
   const t = new T3.DataTexture(
     bytes,
@@ -50,15 +59,31 @@ let lastGame: unknown = null,
   lastPathUpload = -9,
   lastYardUpload = -9,
   lastScatterBump = -99;
-// Waar ooit gelopen is (alleen daar vervagen en versturen) en welk stuk erf nog verstuurd moet; leeg als x1 < x0
+// Waar paadjes kunnen liggen, en welk stuk erf nog geschreven moet; leeg als x1 < x0
 const walked: TileBox = { x0: 0, y0: 0, x1: -1, y1: -1 },
   yardTodo: TileBox = { x0: 0, y0: 0, x1: -1, y1: -1 };
+// Vervagen gaat in een veeg over een paar beeldjes (een band rijen per beeldje), zodat er geen hapering komt.
+// `pending` is het vervagen dat nog moet; `found` is waar na de veeg nog een pad ligt, `fresh` waar intussen
+// gelopen is: samen worden ze het nieuwe `walked` (zo krimpt dat weer als paden verdwijnen).
+const SWEEP_ROWS = 24;
+const sweep = {
+  active: false,
+  row: 0,
+  factor: 1,
+  pending: 1,
+  box: { x0: 0, y0: 0, x1: -1, y1: -1 } as TileBox,
+  found: { x0: 0, y0: 0, x1: -1, y1: -1 } as TileBox,
+  fresh: { x0: 0, y0: 0, x1: -1, y1: -1 } as TileBox,
+};
 let pathsDirty = false;
 
 onMapSize(() => {
   grid = createWearGrid(W, H, RES);
   bytes = new Uint8Array(grid.gw * grid.gh);
+  wornNow = new Uint8Array(W * H);
   wornSeen = new Uint8Array(W * H);
+  chunksW = Math.ceil(W / CHUNK);
+  dirtyChunk = new Uint8Array(chunksW * Math.ceil(H / CHUNK));
   WEAR.value.dispose();
   WEAR.value = makeWear();
   lastGame = null; // bij het volgende beeldje alles opnieuw
@@ -105,6 +130,15 @@ export function wearAt(x: number, y: number): number {
 }
 const WORN = 0.45;
 
+// Onthoud dat het stuk rond tegel (tx, ty) opnieuw geschreven moet worden
+function markChunk(tx: number, ty: number): void {
+  if (tx < 0 || ty < 0 || tx >= W || ty >= H) return;
+  const c = Math.floor(ty / CHUNK) * chunksW + Math.floor(tx / CHUNK);
+  if (dirtyChunk[c]) return;
+  dirtyChunk[c] = 1;
+  dirtyList.push(c);
+}
+
 // Voetstappen van iedereen die nu loopt (alleen op gewone grond: niet in water, gebouwen of op de weg)
 function sampleSteps(): void {
   for (const list of [G.vs, G.us]) {
@@ -118,28 +152,59 @@ function sampleSteps(): void {
       if (ter[i] === TER.WATER || bmap[i] || road[i]) continue;
       addStep(grid, e.x, e.y, amount);
       grow(walked, tx - 1, ty - 1, tx + 1, ty + 1);
+      if (sweep.active) grow(sweep.fresh, tx - 1, ty - 1, tx + 1, ty + 1);
+      // Een stap raakt ook de buurtegels (zachte rand): die kunnen in een ander stuk liggen
+      markChunk(tx - 1, ty - 1);
+      markChunk(tx + 1, ty - 1);
+      markChunk(tx - 1, ty + 1);
+      markChunk(tx + 1, ty + 1);
       pathsDirty = true;
     }
   }
 }
 
-// Schrijf een stuk naar de bytes en tel hoeveel tegels van kaal naar begroeid gingen (of andersom)
-function writeAndCount(box: TileBox): number {
-  if (box.x1 < box.x0) return 0;
-  writeBytes(grid, bytes, (tx, ty) => road[ty * W + tx] === 1, box);
-  let flips = 0;
-  for (let y = Math.max(0, box.y0); y <= Math.min(H - 1, box.y1); y++)
-    for (let x = Math.max(0, box.x0); x <= Math.min(W - 1, box.x1); x++)
-      if (wearAt(x, y) > WORN !== (wornSeen[y * W + x] === 1)) flips++;
-  return flips;
+// Schrijf een stuk naar de bytes en houd bij welke tegels van kaal naar begroeid gingen (of andersom)
+function writeAndCount(box: TileBox): void {
+  const x0 = Math.max(0, box.x0),
+    y0 = Math.max(0, box.y0),
+    x1 = Math.min(W - 1, box.x1),
+    y1 = Math.min(H - 1, box.y1);
+  if (x1 < x0 || y1 < y0) return;
+  writeBytes(grid, bytes, road, { x0, y0, x1, y1 });
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++) {
+      const i = y * W + x,
+        now = wearAt(x, y) > WORN ? 1 : 0;
+      if (now === wornNow[i]) continue;
+      wornNow[i] = now;
+      flipsPending += now === wornSeen[i] ? -1 : 1;
+    }
 }
-// Het gras opnieuw laten neerzetten, en onthouden welke tegels in dit stuk nu kaal zijn
-function bumpScatter(box: TileBox, now: number): void {
-  for (let y = Math.max(0, box.y0); y <= Math.min(H - 1, box.y1); y++)
-    for (let x = Math.max(0, box.x0); x <= Math.min(W - 1, box.x1); x++)
-      wornSeen[y * W + x] = wearAt(x, y) > WORN ? 1 : 0;
+// Het gras opnieuw laten neerzetten, en onthouden welke tegels nu kaal zijn
+function bumpScatter(now: number): void {
+  wornSeen.set(wornNow);
+  flipsPending = 0;
   wearVersion++;
   lastScatterBump = now;
+}
+
+// Eén band van de vervaag-veeg: rijen vervagen, opnieuw schrijven en onthouden waar nog een pad ligt
+function sweepBand(): void {
+  const b = sweep.box,
+    band: TileBox = { x0: b.x0, y0: sweep.row, x1: b.x1, y1: Math.min(b.y1, sweep.row + SWEEP_ROWS - 1) },
+    left = decayPaths(grid, sweep.factor, band);
+  if (left) grow(sweep.found, left.x0 - 1, left.y0 - 1, left.x1 + 1, left.y1 + 1);
+  writeAndCount(band);
+  pathsDirty = true;
+  sweep.row = band.y1 + 1;
+  if (sweep.row <= b.y1) return;
+  // Klaar: `walked` krimpt tot waar nog paden liggen plus waar intussen gelopen is
+  sweep.active = false;
+  walked.x1 = -1;
+  const f = sweep.found,
+    n = sweep.fresh;
+  if (f.x1 >= f.x0) grow(walked, f.x0, f.y0, f.x1, f.y1);
+  if (n.x1 >= n.x0) grow(walked, n.x0, n.y0, n.x1, n.y1);
 }
 
 /** Elk beeldje (echte tijd `now`): voetstappen tellen, paadjes laten vervagen en het plaatje bijwerken. */
@@ -150,16 +215,31 @@ export function stepWear(now: number): void {
     lastGame = G;
     grid.path.fill(0);
     grid.yard.fill(0);
+    wornNow.fill(0);
+    wornSeen.fill(0);
+    flipsPending = 0;
+    for (const c of dirtyList) dirtyChunk[c] = 0;
+    dirtyList.length = 0;
     walked.x1 = -1;
+    sweep.active = false;
+    sweep.pending = 1;
     lastSample = lastDecay = G.t;
     rebuildYards(0, 0, W - 1, H - 1);
     pathsDirty = false;
     lastYardUpload = -9;
   }
-  if (G.speed > 0 && G.t - lastSample >= 0.5) {
-    lastSample = G.t;
-    sampleSteps();
-  }
+  // Elke halve seconde speltijd een voetstap; bij hoge snelheid of weinig beeldjes meerdere per beeldje,
+  // zodat paden even snel groeien, hoe snel het spel ook loopt (hoogstens 4 keer inhalen, de rest vervalt)
+  if (G.speed > 0) {
+    for (let n = 0; G.t - lastSample >= 0.5; n++) {
+      if (n >= 4) {
+        lastSample = G.t;
+        break;
+      }
+      lastSample += 0.5;
+      sampleSteps();
+    }
+  } else lastSample = G.t;
   // Elke 10 seconden speltijd 1% minder: een pad waar niemand meer loopt is na zo'n 10 minuten bijna weg.
   // (Na een grote sprong in de tijd hoogstens 60 keer inhalen, dat is genoeg om alles te laten vervagen.)
   for (let n = 0; G.t - lastDecay >= 10; n++) {
@@ -168,26 +248,46 @@ export function stepWear(now: number): void {
       break;
     }
     lastDecay += 10;
-    if (walked.x1 >= walked.x0) decayPaths(grid, 0.99, walked);
-    pathsDirty = true;
+    sweep.pending *= 0.99;
   }
-  let flips = -1;
+  if (!sweep.active && sweep.pending < 1) {
+    if (walked.x1 >= walked.x0) {
+      sweep.active = true;
+      sweep.factor = sweep.pending;
+      sweep.row = Math.max(0, walked.y0);
+      sweep.box = { x0: walked.x0, y0: walked.y0, x1: walked.x1, y1: walked.y1 };
+      sweep.found = { x0: 0, y0: 0, x1: -1, y1: -1 };
+      sweep.fresh = { x0: 0, y0: 0, x1: -1, y1: -1 };
+    }
+    sweep.pending = 1;
+  }
+  if (sweep.active) sweepBand();
+  let upload = false;
   if (yardTodo.x1 >= yardTodo.x0 && now - lastYardUpload >= 0.3) {
     // Een nieuw gebouw: het erf meteen (en het gras daar ook meteen weg)
     lastYardUpload = now;
-    flips = writeAndCount(yardTodo);
-    if (flips > 0) bumpScatter(yardTodo, now);
+    writeAndCount(yardTodo);
+    if (flipsPending > 0) bumpScatter(now);
     yardTodo.x1 = -1;
+    upload = true;
   }
-  if (pathsDirty && now - lastPathUpload >= 2) {
+  // Stukken waar gelopen is opnieuw schrijven: hooguit 24 per beeldje, zodat een grote kaart vol lopers niet
+  // hapert (de rest volgt in de beeldjes daarna)
+  for (let n = 0; n < CHUNKS_PER_FRAME && dirtyList.length > 0; n++) {
+    const c = dirtyList.pop()!; // (de lijst is niet leeg, zie de lus)
+    dirtyChunk[c] = 0;
+    const cx = (c % chunksW) * CHUNK,
+      cy = Math.floor(c / chunksW) * CHUNK;
+    writeAndCount({ x0: cx, y0: cy, x1: cx + CHUNK - 1, y1: cy + CHUNK - 1 });
+  }
+  if (pathsDirty && !sweep.active && now - lastPathUpload >= 2) {
     // Paadjes hooguit eens per 2 seconden versturen; het gras pas opnieuw als er genoeg veranderd is
     lastPathUpload = now;
     pathsDirty = false;
-    const pathFlips = writeAndCount(walked);
-    if (pathFlips > 20 && now - lastScatterBump >= 10) bumpScatter(walked, now);
-    flips = Math.max(flips, 0);
+    if (flipsPending > 20 && now - lastScatterBump >= 10) bumpScatter(now);
+    upload = true;
   }
-  if (flips >= 0) {
+  if (upload) {
     WEAR.value.needsUpdate = true;
     wearStats.uploads++;
   }

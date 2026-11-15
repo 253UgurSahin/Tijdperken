@@ -1,7 +1,7 @@
 // Hoe de grond eruitziet: fijne details (gras, korrels, steentjes), rotswanden en sneeuw op de
 // bergen, natte oevers en zachte schaduw rond gebouwen en onder bomen. In de winter sneeuw over het
-// land en in de herfst blad rond de bomen. Platgelopen paadjes en erven (wear.ts), en natte grond met plassen bij regen. Dit gebeurt in de videokaart, bovenop de kleur per tegel
-// uit terrain.ts.
+// land en in de herfst blad rond de bomen. Platgelopen paadjes en erven (wear.ts), en natte grond met
+// plassen bij regen. Dit gebeurt in de videokaart, bovenop de kleur per tegel uit terrain.ts.
 import type { Building } from '../types';
 import * as T3 from 'three';
 import { H, W, onMapSize } from '../config';
@@ -276,8 +276,9 @@ const GROUND_COLOR = `
       * uSnowCover * smoothstep(0.55, 0.8, vWNrm.y)
       // Tot aan het ijs: anders blijft de oever kaal en donker als een rand om een bevroren meer
       * mix(smoothstep(-0.12, -0.03, vWPos.y), smoothstep(-0.2, -0.17, vWPos.y), uSnowCover);
-    // Platgelopen paadjes schemeren grijsbruin door de sneeuw heen
-    cover *= 1.0 - trod * 0.6;
+    // Platgelopen paadjes schemeren door de sneeuw heen, als grijze vertrapte sneeuw en niet als modder
+    cover *= 1.0 - trod * 0.45;
+    col = mix(col, vec3(0.55, 0.52, 0.48) * (0.9 + dA.g * 0.2), trod * uSnowCover * 0.7);
     // Op wegen en de randen van gebieden blijft weinig liggen, zodat je ze blijft zien (en ze zijn wat donkerder:
     // nat en platgelopen). Herkend aan de kleur van de grond zonder het seizoensfilter van het materiaal (dat maakt
     // in de winter alles blauwgroener). Elke soort weg heeft een eigen kenmerk, zodat zand en kale plekken in de
@@ -313,7 +314,7 @@ const GROUND_COLOR = `
   }
   // Regen: de grond wordt donker en nat (aarde en steen meer dan gras), alleen bovenop en niet op sneeuw
   float rainWet = uRainWet * smoothstep(0.55, 0.8, vWNrm.y) * (1.0 - snowW);
-  col *= 1.0 - rainWet * (0.1 * grassW + 0.2 * (soilW + stoneW));
+  col *= 1.0 - rainWet * (0.07 * grassW + 0.17 * (soilW + stoneW));
   // Plassen in de kuiltjes van kale grond, wegen en paadjes (niet in het gras; niet op "laag")
   float puddle = 0.0;
   #ifdef FINE_DETAIL
@@ -321,11 +322,15 @@ const GROUND_COLOR = `
       // Kuiltjes: een zachte vlekkenruis van zo'n tegel groot (de grove laag van het detailplaatje, kleiner gezet)
       float hollow = texture2D(uDetail, wp * 0.23 + vec2(0.13, 0.71)).a * 0.75 + macro * 0.25;
       float puddleWhere = rainWet * (1.0 - grassW * (1.0 - trod));
-      puddle = puddleWhere * smoothstep(0.47, 0.44, hollow);
-      // Een donkere natte rand, en in de plas zelf de grijsblauwe lucht (er is geen echte spiegeling)
-      float rim = puddleWhere * smoothstep(0.51, 0.47, hollow) - puddle;
+      // (1 - smoothstep(a, b) in plaats van een omgekeerde smoothstep: die laat GLSL officieel open)
+      puddle = puddleWhere * (1.0 - smoothstep(0.437, 0.447, hollow));
+      // Een donkere natte rand, en in de plas zelf de grijsblauwe lucht (er is geen echte spiegeling). Hoe
+      // schuiner je kijkt, hoe meer lucht een plas spiegelt: daarom lichter naar de horizon toe.
+      float rim = puddleWhere * (1.0 - smoothstep(0.447, 0.48, hollow)) - puddle;
+      float skyward = 1.0 - normalize(cameraPosition - vWPos).y;
       col *= 1.0 - rim * 0.3;
-      col = mix(col, vec3(0.36, 0.41, 0.47) * (0.9 + dB.r * 0.2), puddle * 0.75);
+      vec3 skyCol = vec3(0.48, 0.53, 0.6) * (0.92 + dB.r * 0.16) * (0.9 + skyward * skyward * 0.5);
+      col = mix(col, skyCol, puddle * 0.85);
     }
   #endif
   // Natte oever: vlak bij het water is de grond donkerder (en glanst een beetje). In de winter niet: dan ligt

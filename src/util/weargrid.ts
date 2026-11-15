@@ -116,35 +116,53 @@ function cellsOf(grid: WearGrid, box?: TileBox) {
 /**
  * Laat de paadjes vervagen: alles keer `factor` (de erven blijven). Heel kleine restjes worden 0.
  * Met `box` alleen dat stuk (daarbuiten is toch niet gelopen): op een grote kaart scheelt dat veel werk.
+ * Geeft het stuk terug (in tegels) waar nog een paadje ligt, of null als alles weg is.
  */
-export function decayPaths(grid: WearGrid, factor: number, box?: TileBox): void {
+export function decayPaths(grid: WearGrid, factor: number, box?: TileBox): TileBox | null {
   const p = grid.path,
+    r = grid.res,
     { cx0, cy0, cx1, cy1 } = cellsOf(grid, box);
+  let left = grid.gw,
+    right = -1,
+    top = grid.gh,
+    bottom = -1;
   for (let cy = cy0; cy < cy1; cy++)
-    for (let k = cy * grid.gw + cx0, end = cy * grid.gw + cx1; k < end; k++) {
+    for (let cx = cx0, k = cy * grid.gw + cx0; cx < cx1; cx++, k++) {
       if (p[k] === 0) continue;
       const v = p[k] * factor;
       p[k] = v < 0.004 ? 0 : v;
+      if (v < 0.004) continue;
+      if (cx < left) left = cx;
+      if (cx > right) right = cx;
+      if (cy < top) top = cy;
+      if (cy > bottom) bottom = cy;
     }
+  if (right < 0) return null;
+  return {
+    x0: Math.floor(left / r),
+    y0: Math.floor(top / r),
+    x1: Math.floor(right / r),
+    y1: Math.floor(bottom / r),
+  };
 }
 
 /**
- * Schrijf het raster als bytes (0..255) voor de videokaart: het meeste van erf en pad. Op een weg altijd 0,
- * zodat klinkers en asfalt nooit vies worden (dorpelingen lopen juist het liefst over de weg). Met `box` alleen dat stuk.
+ * Schrijf het raster als bytes (0..255) voor de videokaart: het meeste van erf en pad. Op een weg (elke soort:
+ * `road` per tegel, groter dan 0) altijd 0, zodat zand, klinkers en asfalt nooit vies worden. Met `box` alleen dat stuk.
+ * Een pad telt met een macht 2,5: waar maar af en toe iemand liep blijft het gras dicht, alleen drukke routes
+ * worden kaal (en dus smalle paadjes in plaats van brede kale velden).
  */
-export function writeBytes(
-  grid: WearGrid,
-  out: Uint8Array,
-  isRoad: (tx: number, ty: number) => boolean,
-  box?: TileBox,
-): void {
+export function writeBytes(grid: WearGrid, out: Uint8Array, road: ArrayLike<number>, box?: TileBox): void {
   const r = grid.res,
     { cx0, cy0, cx1, cy1 } = cellsOf(grid, box);
   for (let cy = cy0; cy < cy1; cy++) {
-    const ty = Math.floor(cy / r);
-    for (let cx = cx0; cx < cx1; cx++) {
-      const k = cy * grid.gw + cx;
-      out[k] = isRoad(Math.floor(cx / r), ty) ? 0 : Math.round(Math.max(grid.yard[k], grid.path[k]) * 255);
+    const roadRow = Math.floor(cy / r) * grid.w;
+    for (let cx = cx0, k = cy * grid.gw + cx0; cx < cx1; cx++, k++) {
+      const p = grid.path[k];
+      out[k] =
+        road[roadRow + Math.floor(cx / r)] > 0
+          ? 0
+          : Math.round(Math.max(grid.yard[k], p * p * Math.sqrt(p)) * 255);
     }
   }
 }

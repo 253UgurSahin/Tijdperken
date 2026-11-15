@@ -1,5 +1,6 @@
-// De seizoenen in beeld: de kleur van bomen, gras en grond, sneeuw, lentebloesem, gevallen blad en natte grond. Een nieuw
-// seizoen komt niet ineens: het loopt zacht in tijdens de laatste nacht van het oude (zie seasonBlend).
+// De seizoenen in beeld: de kleur van bomen, gras en grond, sneeuw, lentebloesem, gevallen blad en natte
+// grond. Een nieuw seizoen komt niet ineens: het loopt zacht in tijdens de laatste nacht van het oude
+// (zie seasonBlend).
 import * as T3 from 'three';
 import { store } from '../core/store';
 import { seasonBlend, seasonIndex } from '../data/modifiers';

@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { addStep, clearYards, createWearGrid, decayPaths, stampYard, writeBytes } from '../src/util/weargrid';
 
-const noRoad = () => false;
+const noRoad = new Uint8Array(400);
 // De waarde van een tegel (x, y): het meeste van zijn vakjes
 function tileValue(grid: ReturnType<typeof createWearGrid>, out: Uint8Array, x: number, y: number) {
   let m = 0;
@@ -30,13 +30,20 @@ describe('erven rond gebouwen', () => {
         } else expect(v).toBe(0);
       }
   });
-  it('op een weg altijd 0', () => {
+  it('op elke soort weg altijd 0 (zandpad, klinkers en asfalt)', () => {
     const grid = createWearGrid(10, 10),
-      out = new Uint8Array(grid.gw * grid.gh);
+      out = new Uint8Array(grid.gw * grid.gh),
+      road = new Uint8Array(100);
     stampYard(grid, 2, 2, 3, 1, 1, 1);
     for (let i = 0; i < 50; i++) addStep(grid, 3.5, 3.5, 0.1);
-    writeBytes(grid, out, (x, y) => x === 3 && y === 3);
+    // Een zandpad (1), klinkers (2) en asfalt (3) door het erf heen
+    road[3 * 10 + 3] = 1;
+    road[3 * 10 + 4] = 2;
+    road[4 * 10 + 3] = 3;
+    writeBytes(grid, out, road);
     expect(tileValue(grid, out, 3, 3)).toBe(0);
+    expect(tileValue(grid, out, 4, 3)).toBe(0);
+    expect(tileValue(grid, out, 3, 4)).toBe(0);
     expect(tileValue(grid, out, 2, 2)).toBeGreaterThan(0);
   });
   it('wissen en opnieuw neerzetten geeft hetzelfde', () => {
@@ -89,5 +96,21 @@ describe('paadjes', () => {
     decayPaths(grid, 0.5, { x0: 0, y0: 0, x1: 3, y1: 3 });
     expect(grid.path[2 * grid.gw + 2]).toBeCloseTo(0.25);
     expect(grid.path[16 * grid.gw + 16]).toBeCloseTo(0.5);
+  });
+  it('vervagen vertelt waar nog een paadje ligt, en niets als alles weg is', () => {
+    const grid = createWearGrid(10, 10);
+    addStep(grid, 2.25, 3.25, 0.5);
+    addStep(grid, 6.75, 7.75, 0.5);
+    expect(decayPaths(grid, 0.9)).toEqual({ x0: 2, y0: 3, x1: 6, y1: 7 });
+    expect(decayPaths(grid, 0.001)).toBeNull();
+  });
+  it('een weinig gelopen pad telt minder zwaar dan een druk pad', () => {
+    const grid = createWearGrid(4, 4),
+      out = new Uint8Array(grid.gw * grid.gh);
+    addStep(grid, 0.25, 0.25, 0.25); // weinig gelopen
+    addStep(grid, 1.25, 0.25, 1); // druk
+    writeBytes(grid, out, new Uint8Array(16));
+    expect(out[0]).toBe(Math.round(0.03125 * 255)); // 0,25 tot de macht 2,5
+    expect(out[2]).toBe(255);
   });
 });
