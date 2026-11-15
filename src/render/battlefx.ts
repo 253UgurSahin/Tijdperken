@@ -5,7 +5,7 @@ import { W } from '../config';
 import { B } from '../data/buildings';
 import { G } from '../game/state';
 import { bMaxHp } from '../game/upgrades';
-import { bmap } from '../world/world';
+import { bmap, road } from '../world/world';
 import { COLLAPSE_TIME, RUIN_LIFE, collapseAt, damageTier, rubbleLayout, tiltSign } from '../util/collapse';
 import { hash2 } from '../util/random';
 import { GB, disposeMerged, gDod, mat, mergeStatic, mk } from './kit';
@@ -42,6 +42,8 @@ interface Ruin {
   axis: 'x' | 'z';
   /** Het tijdperk toen het viel: bepaalt de kleuren van het puin. */
   era: number;
+  /** Hoeveel tegels van de plek al weg waren toen het viel (een poort kan op een weg staan). */
+  roadTiles: number;
 }
 
 // Hier hangen de instortende modellen en het puin (los van de gebouwen: dus niet aan te klikken)
@@ -77,6 +79,7 @@ export function collapseBuilding(id: number, r: CollapsingModel): boolean {
     sign: tiltSign(id),
     axis: hash2(id, 4, 5) < 0.5 ? 'x' : 'z',
     era: G.age,
+    roadTiles: roadTilesUnder(r.x, r.y, r.s),
   });
   dustRing(r.g.position.x, r.g.position.z, r.s, 0.6);
   return true;
@@ -150,6 +153,19 @@ function makeRubble(ru: Ruin): T3.Group {
   return mergeStatic(g);
 }
 
+// Hoeveel tegels van een plek van s bij s een weg hebben
+function roadTilesUnder(x: number, y: number, s: number): number {
+  let n = 0;
+  for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) if (road[(y + dy) * W + x + dx]) n++;
+  return n;
+}
+// Staat er nu iets nieuws op de plek van het puin: een gebouw op welke tegel dan ook, of een nieuwe weg?
+function ruinCovered(ru: Ruin): boolean {
+  for (let dy = 0; dy < ru.s; dy++)
+    for (let dx = 0; dx < ru.s; dx++) if (bmap[(ru.y + dy) * W + ru.x + dx]) return true;
+  return roadTilesUnder(ru.x, ru.y, ru.s) > ru.roadTiles;
+}
+
 function removeRuin(i: number) {
   const ru = ruins[i];
   for (const o of [ru.model, ru.rubble])
@@ -164,9 +180,8 @@ function removeRuin(i: number) {
 function stepRuins(dt: number) {
   for (let i = ruins.length - 1; i >= 0; i--) {
     const ru = ruins[i];
-    // Staat er (weer) iets gebouwd op deze plek? Dan meteen weg met het puin
-    const centre = (ru.y + Math.floor(ru.s / 2)) * W + ru.x + Math.floor(ru.s / 2);
-    if (bmap[centre]) {
+    // Staat er (weer) iets gebouwd of een weg aangelegd op deze plek? Dan meteen weg met het puin
+    if (ruinCovered(ru)) {
       removeRuin(i);
       continue;
     }

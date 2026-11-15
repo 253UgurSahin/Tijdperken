@@ -746,7 +746,10 @@ const RING_ALPHA = (() => {
       data[i + 3] = 255;
     }
   const t = new T3.DataTexture(data, n, n);
-  t.magFilter = t.minFilter = T3.LinearFilter;
+  // Met mipmaps: ver uitgezoomd is een ring maar een paar pixels, en dan flikkert de dunne rand anders
+  t.magFilter = T3.LinearFilter;
+  t.minFilter = T3.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
   t.needsUpdate = true;
   return t;
 })();
@@ -788,7 +791,8 @@ const discM = new T3.Matrix4(),
 function drawDiscs() {
   const n = { v: 0, u: 0 };
   for (const r of eRec.values()) if (r.g.visible) n[r.discV ? 'v' : 'u']++;
-  // 's Nachts gloeien de schijven niet: tot de helft gedimd (ze zijn onverlicht, dus dat doen we zelf)
+  // 's Nachts gloeien de schijven niet: tot de helft gedimd (ze zijn onverlicht, dus dat doen we zelf).
+  // Dat geldt ook voor de volle stippen ver uitgezoomd, anders vallen die 's nachts fel op.
   const dim = 1 - 0.5 * Math.min(1, darkness() / 0.78);
   for (const k of ['v', 'u'] as const) {
     const layer = discs[k];

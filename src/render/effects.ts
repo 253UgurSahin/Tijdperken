@@ -241,8 +241,16 @@ function addChip(x: number, y: number, z: number, col: string) {
   chips.setColorAt(i, chipC.set(col));
 }
 
-// Pijlen: een donkere houten schacht (een lichte streep las als een bleek blokje)
-const ARROW_WOOD = '#6b5236';
+// Pijlen: een houten schacht (een lichte streep las als een bleek blokje). Een pijl met een eigen kleur (zoals
+// die van de vijand) krijgt een tint daarvan, zodat je nog ziet wie er schiet.
+const ARROW_WOOD = '#7a5f3e',
+  PLAIN_ARROW = '#fff3c4',
+  arrowTint = new T3.Color(),
+  tintCol = new T3.Color();
+function arrowColour(col: string | undefined): T3.Color {
+  arrowTint.set(ARROW_WOOD);
+  return col && col !== PLAIN_ARROW ? arrowTint.lerp(tintCol.set(col), 0.55) : arrowTint;
+}
 // Lichtspoor: een blokje dat vanaf de kogel naar achteren loopt (lengte 1, dus schaal z = lengte)
 const TRACER_G = new T3.BoxGeometry(1, 1, 1).translate(0, 0, -0.5);
 function tracerMesh() {
@@ -259,9 +267,9 @@ function tracerMesh() {
   m.renderOrder = 5;
   return m;
 }
-// Hoogstens zoveel vonkjes achter lichtsporen per beeldje, en alleen om het andere beeldje
+// Hoogstens zoveel vonkjes achter lichtsporen per beeldje, en dertig keer per seconde (op elke framerate even veel)
 const MAX_TRACER_EMBERS = 24;
-let emberFrame = false;
+let emberT = 0;
 
 let lastFxT = 0,
   smokeT = 0; // tijd sinds het laatste rookpluimpje van een kanonskogel
@@ -277,7 +285,9 @@ export function drawFx() {
   // Vanaf het buskruit zijn kogels lichtsporen; daarvoor pijlen van hout
   const tracers = G.age >= 4;
   let embers = MAX_TRACER_EMBERS;
-  emberFrame = !emberFrame;
+  emberT += G.speed ? dt : 0;
+  const emberNow = emberT >= 1 / 30;
+  if (emberNow) emberT = 0;
   for (const p of G.proj as DrawnProjectile[]) {
     const m = p.big
       ? pool('shell', () => new T3.Mesh(gIco(0), mat('#2a2a2a')))
@@ -307,9 +317,10 @@ export function drawFx() {
       m.rotation.set(-Math.atan(slope), Math.atan2(p.lx - px, p.ly - py), 0);
       if (tracers) {
         // Een dun, fel streepje dat achter de kogel aan hangt, met af en toe een gloeiend vonkje erachter
-        m.scale.set(0.022, 0.022, 0.7);
-        m.material.color.set(p.col || '#fff3c4');
-        if (emberFrame && embers > 0 && G.speed) {
+        // (niet langer dan het al gevlogen is, anders steekt het streepje achter de schutter uit)
+        m.scale.set(0.022, 0.022, Math.max(0.05, Math.min(0.7, Math.hypot(px - p.sx, py - p.sy!))));
+        m.material.color.set(p.col || PLAIN_ARROW);
+        if (emberNow && embers > 0 && G.speed) {
           embers--;
           const back = 0.35 / Math.max(0.01, Math.hypot(p.lx - px, p.ly - py));
           emit(
@@ -327,7 +338,10 @@ export function drawFx() {
             0.7,
           );
         }
-      } else m.scale.set(0.03, 0.03, arc ? 0.38 : 0.5);
+      } else {
+        m.scale.set(0.035, 0.035, arc ? 0.38 : 0.5);
+        m.material.color.copy(arrowColour(p.col));
+      }
     }
   }
   if (smokeT >= 1 / 60) smokeT = 0;
