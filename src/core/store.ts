@@ -44,6 +44,8 @@ export interface Store {
   alpha: number;
   /** Waar de muis boven hangt. */
   hover: { kind: string; id: number } | null;
+  /** Van welke voorziening het bereik over de kaart staat (knop 'Toon bereik'), of null (zie render/coverage.ts). */
+  coverView: string | null;
   /** Beeldkwaliteit: resolutie-factor, maximum aantal pixels, gekozen stand en meetwaarden. */
   resScale?: number;
   pixelBudget?: number;
@@ -87,4 +89,5 @@ export const store: Store = {
   achievementTimer: 0, // tijd tot het spel weer kijkt of je een prestatie hebt gehaald
   alpha: 1,
   hover: null,
+  coverView: null,
 };

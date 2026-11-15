@@ -1,0 +1,53 @@
+/* Voorzieningen in het infopaneel (zie ui/inspector.ts): wat een gebouw geeft, en welke een huis bereiken. */
+.statline.svcline .dot {
+  background: var(--svc);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--svc) 24%, transparent);
+}
+.statline.svcline span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.svcbtn {
+  flex: none;
+  font: 500 11px var(--f-mono);
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--rule-2);
+  background: var(--paper-hi);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.svcbtn:hover {
+  color: var(--ink);
+  border-color: var(--ink-4);
+}
+.svcbtn.on {
+  color: var(--ink);
+  border-color: var(--acc-edge);
+  background: var(--acc-soft);
+}
+/* Op een smal scherm lopen de kaartjes door op de volgende regel */
+.svcchips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin-top: 6px;
+  font: 12px var(--f-mono);
+}
+.svc {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px 1px 4px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--rule);
+}
+.svc.ok {
+  color: var(--good);
+  border-color: color-mix(in srgb, var(--good) 35%, transparent);
+  background: color-mix(in srgb, var(--good) 10%, transparent);
+}
+.svc.no {
+  color: var(--ink-4);
+}

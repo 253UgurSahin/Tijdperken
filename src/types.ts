@@ -86,6 +86,8 @@ export interface BuildingDef {
   charm?: { v: number; r: number };
   /** Hulp voor akkers in de buurt: `farm` = zoveel sneller oogsten (0,2 = 20%), binnen `r` tegels. */
   aura?: { farm: number; r: number };
+  /** Een voorziening voor huizen in de buurt (zie data/services.ts): `k` = welke, `r` = bereik in tegels. */
+  serve?: { k: string; r: number };
   // Alleen bij wereldwonderen (zie data/wonders.ts):
   wonder?: boolean;
   /** Lidwoord ('de' of 'het'), en of de naam meervoud is. */
