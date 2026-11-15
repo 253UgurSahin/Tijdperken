@@ -35,6 +35,7 @@ import { entitiesInBox } from '../input/selection';
 import { animEntity, clearDying, initAnim, startDeath, type Animated } from './animate';
 import { LAYER, clearParticles, emit, puff } from './particles';
 import { markOrder } from './effects';
+import { clearBattleFx, collapseBuilding } from './battlefx';
 import { camDist, isFar, pxu } from './camera';
 import { CAM3, S3, cam } from './scene';
 import { buildTerrain, flushTerrain, paintAll, repaintTile } from './terrain';
@@ -689,8 +690,11 @@ export function syncBuildings() {
   }
   for (const [id, r] of bRec)
     if (!seen.has(id)) {
-      BG3.remove(r.g);
-      disposeMerged(r.g);
+      // Een verwoest of afgebroken gebouw stort eerst in (zie battlefx.ts); anders meteen weg
+      if (!collapseBuilding(id, r)) {
+        BG3.remove(r.g);
+        disposeMerged(r.g);
+      }
       bRec.delete(id);
       changedAt(r.x, r.y, r.x + r.s - 1, r.y + r.s - 1);
     }
@@ -727,26 +731,60 @@ function bossLook(r: EntityRec, e: Foe) {
 }
 const BASEG = new T3.CircleGeometry(1, 20).rotateX(-Math.PI / 2);
 /**
+ * Een zachte ring als doorzichtigheid (alphaMap leest het groene kanaal): weinig in het midden, een zachte
+ * heldere rand op 70-90% van de straal en niets aan de buitenkant. Een volle schijf leek op een plastic
+ * onderzetter; een ring laat het figuur en de grond eronder zien.
+ */
+const RING_ALPHA = (() => {
+  const n = 64,
+    data = new Uint8Array(n * n * 4);
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) {
+      const d = Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2) / (n / 2);
+      // Rand: een zachte bult rond 0,8 van de straal; binnen een lichte waas, buiten de schijf niets
+      const rim = Math.exp(-(((d - 0.8) / 0.1) ** 2)),
+        inner = d < 0.8 ? 0.28 : 0,
+        v = d >= 1 ? 0 : Math.min(1, Math.max(rim, inner * (1 - rim)) * (d > 0.92 ? (1 - d) / 0.08 : 1));
+      const i = (y * n + x) * 4;
+      data[i] = data[i + 1] = data[i + 2] = Math.round(v * 255);
+      data[i + 3] = 255;
+    }
+  const t = new T3.DataTexture(data, n, n);
+  // Met mipmaps: ver uitgezoomd is een ring maar een paar pixels, en dan flikkert de dunne rand anders
+  t.magFilter = T3.LinearFilter;
+  t.minFilter = T3.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
+  t.needsUpdate = true;
+  return t;
+})();
+/**
  * Alle gekleurde schijven onder de figuren in twee keer getekend (één laag voor dorpelingen, één voor soldaten
- * en vijanden) in plaats van één keer per figuur: met honderden figuren scheelt dat veel werk.
+ * en vijanden) in plaats van één keer per figuur: met honderden figuren scheelt dat veel werk. Dichtbij een
+ * zachte ring (ring), ver uitgezoomd een volle stip (solid), zodat een leger dan toch goed te zien is.
  */
 interface DiscLayer {
   mesh: T3.InstancedMesh<T3.CircleGeometry, T3.MeshBasicMaterial>;
+  solid: T3.MeshBasicMaterial;
+  ring: T3.MeshBasicMaterial;
   /** Hoe doorzichtig gewoon (zonder stippen). */
   alpha: number;
 }
 function discLayer(alpha: number, size: number): DiscLayer {
-  const mesh = new T3.InstancedMesh(
-    BASEG as T3.CircleGeometry,
-    new T3.MeshBasicMaterial({ transparent: true, opacity: alpha, depthWrite: false }),
-    size,
-  );
+  const solid = new T3.MeshBasicMaterial({ transparent: true, opacity: alpha, depthWrite: false }),
+    ring = new T3.MeshBasicMaterial({
+      transparent: true,
+      opacity: Math.min(1, alpha * 1.6),
+      depthWrite: false,
+      alphaMap: RING_ALPHA,
+    });
+  // (begint als ring; drawDiscs kiest elk beeldje het goede materiaal)
+  const mesh = new T3.InstancedMesh(BASEG as T3.CircleGeometry, ring, size);
   // Elke schijf staat ergens anders: niet als één geheel wegsnijden buiten beeld
   mesh.frustumCulled = false;
   mesh.renderOrder = 2;
   mesh.count = 0;
   S3.add(mesh);
-  return { mesh, alpha };
+  return { mesh, solid, ring, alpha };
 }
 const discs = { v: discLayer(0.32, 256), u: discLayer(0.55, 256) };
 const discM = new T3.Matrix4(),
@@ -757,16 +795,24 @@ const discM = new T3.Matrix4(),
 function drawDiscs() {
   const n = { v: 0, u: 0 };
   for (const r of eRec.values()) if (r.g.visible) n[r.discV ? 'v' : 'u']++;
+  // 's Nachts gloeien de schijven niet: tot de helft gedimd (ze zijn onverlicht, dus dat doen we zelf).
+  // Dat geldt ook voor de volle stippen ver uitgezoomd, anders vallen die 's nachts fel op.
+  const dim = 1 - 0.5 * Math.min(1, darkness() / 0.78);
   for (const k of ['v', 'u'] as const) {
     const layer = discs[k];
     // Te weinig plek: een grotere laag maken (de oude geven we vrij)
     if (n[k] > layer.mesh.instanceMatrix.count) {
       S3.remove(layer.mesh);
       layer.mesh.dispose();
+      layer.solid.dispose();
+      layer.ring.dispose();
       discs[k] = discLayer(layer.alpha, Math.ceil(n[k] * 1.5));
     }
-    discs[k].mesh.count = 0;
-    discs[k].mesh.material.opacity = dots ? Math.min(1, discs[k].alpha * 1.7) : discs[k].alpha;
+    const d = discs[k];
+    d.mesh.count = 0;
+    d.mesh.material = dots ? d.solid : d.ring;
+    d.solid.opacity = dots ? Math.min(1, d.alpha * 1.7) : d.alpha;
+    d.mesh.material.color.setScalar(dim);
   }
   for (const r of eRec.values()) {
     if (!r.g.visible) continue;
@@ -1170,6 +1216,7 @@ function resetWorld3D() {
       disposeMerged(r.g);
     }
   clearDying();
+  clearBattleFx();
   clearParticles();
   bRec.clear();
   eRec.clear();

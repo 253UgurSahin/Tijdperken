@@ -1,7 +1,7 @@
 // Beweging van figuurtjes: lopen, werken, ademen, aanvallen (zwaai, terugslag, mondingsvuur) en neervallen.
 import * as T3 from 'three';
 import { store } from '../core/store';
-import { disposeMerged } from './kit';
+import { VCMAT, VCMAT_HIT, disposeMerged, isMesh } from './kit';
 import { LAYER, emit, puff } from './particles';
 import type { Limbs } from './people';
 import { S3 } from './scene';
@@ -155,10 +155,56 @@ function onAttack(r: EntityRec) {
   }
 }
 
-// Eenmalig bij een treffer: een paar vonkjes, zodat je ziet wie geraakt wordt
+// Eenmalig bij een treffer: oranje en witte vonkjes, zodat je ziet wie geraakt wordt
 function onHit(r: EntityRec) {
   const g = r.g;
   puff(LAYER.glow, 3, g.position.x, 0.45, g.position.z, 1.2, 1.2, 0.25, 0.035, 0.01, 0xffc070, 1, -4);
+  puff(LAYER.glow, 2, g.position.x, 0.5, g.position.z, 1.8, 0.8, 0.18, 0.03, 0.01, HIT_SPARK, 1, -4);
+}
+const HIT_SPARK = 0xfff2d0;
+
+// Hoe lang (seconden) een geraakt figuur wit oplicht: één of twee beeldjes
+const HIT_FLASH = 0.09;
+/** Figuren die nu oplichten, met de onderdelen die we wit gemaakt hebben en hun eigen materiaal. */
+const flashing = new WeakMap<EntityRec, [T3.Mesh, T3.Material][]>();
+// Een los blokje in één kleur (niet samengevoegd) krijgt een witte tweeling van zijn eigen materiaal
+const hitTwins = new Map<T3.Material, T3.Material>();
+function hitTwin(m: T3.Material): T3.Material | null {
+  if (m === VCMAT) return VCMAT_HIT;
+  if (!m.userData.vc || !(m instanceof T3.MeshStandardMaterial)) return null;
+  let twin = hitTwins.get(m);
+  if (!twin) {
+    // (gloed is een uniform: de tweeling gebruikt dezelfde shader als het origineel)
+    const c = m.clone();
+    c.emissive.set('#ffffff');
+    c.emissiveIntensity = 0.6;
+    delete c.userData.vc; // (geen gewoon kleurmateriaal meer: niet samenvoegen of nog eens verwisselen)
+    hitTwins.set(m, (twin = c));
+  }
+  return twin;
+}
+/**
+ * Wit oplichten bij een treffer: alle gewone onderdelen (en het vaste beeldje) even een wit materiaal.
+ * Alleen bij het begin en het eind wisselen, niet elk beeldje. De omlijning (hull) en bijzondere delen
+ * (vizier, glas, gloeiende stukjes) hebben een ander soort materiaal en doen dus niet mee.
+ */
+function hitFlash(r: EntityRec, on: boolean) {
+  if (on === flashing.has(r)) return;
+  if (on) {
+    const swapped: [T3.Mesh, T3.Material][] = [];
+    r.body.traverse(o => {
+      if (!isMesh(o) || o.userData.hull || Array.isArray(o.material)) return;
+      const twin = hitTwin(o.material);
+      if (!twin) return;
+      swapped.push([o, o.material]);
+      o.material = twin;
+    });
+    flashing.set(r, swapped);
+  } else {
+    // (een onderdeel kan intussen even los liggen, zie showAsDot: daarom de bewaarde lijst, niet body)
+    for (const [o, m] of flashing.get(r)!) o.material = m;
+    flashing.delete(r);
+  }
 }
 
 /** Armen en benen van een mensfiguur. */
@@ -240,6 +286,7 @@ export function animEntity(r: EntityRec, e: Animated, moving: boolean, working: 
     onHit(r);
   }
   r.flPrev = fl;
+  hitFlash(r, store.TM - r.hitT < HIT_FLASH);
   const q = (store.TM - r.atkT) / (r.atk === 'trebuchet' ? 1.6 : 0.45);
   const fighting = !moving && e.tgt && !e.tgt.dead && (e.cd > 0 || q < 1);
   // Terugstoot (geschut) en uitval (zwaard), en een klein schokje bij een treffer
@@ -268,6 +315,7 @@ export function animEntity(r: EntityRec, e: Animated, moving: boolean, working: 
 
 /** Een figuur is gesneuveld: laat het omvallen en wegzakken in plaats van ineens te verdwijnen. */
 export function startDeath(r: EntityRec) {
+  hitFlash(r, false);
   DG3.add(r.g);
   r.ring.visible = false;
   r.dieT = store.TM;

@@ -65,6 +65,10 @@ type SolidMesh = T3.Mesh<T3.BufferGeometry, T3.MeshStandardMaterial>;
 const smooth01 = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 // (ook gebruikt door crowd.ts, om de shader voor figuren in groepen vooraf klaar te maken)
 export const VCMAT = new T3.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.88 });
+// Een figuur dat geraakt wordt licht heel even wit op. Gloed is een uniform: dezelfde shader, dus niets opnieuw bouwen.
+export const VCMAT_HIT = VCMAT.clone();
+VCMAT_HIT.emissive.set('#ffffff');
+VCMAT_HIT.emissiveIntensity = 0.6;
 
 // Een klein plaatje met korrel (toevallig grijs), voor de structuur op muren en daken
 const GRAIN = (() => {
