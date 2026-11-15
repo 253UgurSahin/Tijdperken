@@ -45,6 +45,9 @@ const doorFreeAt = new Map<number, number>();
 const DOOR_GAP = 1.1;
 // Hooguit zo veel ritten tegelijk per richting en per gebouw (een mijnschacht maakt drie soorten erts)
 const KEYS_PER_TRIP = 3;
+// Een rit duurt minstens zo veel seconden, maar een kar gaat nooit trager dan MIN_SPEED tegels per seconde
+const MIN_TRIP_TIME = 3.5;
+const MIN_SPEED = 0.7;
 
 // Een nieuw spel of een geladen spel: alles van het vorige spel weg
 function checkGame(): void {
@@ -128,12 +131,16 @@ function tripRoute(from: Building, to: Building, fly: boolean): Tile[] | null {
 function launch(from: Building, to: Building, res: string, amount: number): boolean {
   checkGame();
   if (carts.length >= cartCap()) return false;
+  // Eén regel voor alles, ook voor drones (die de weg niet nodig hebben): alleen tussen gebouwen aan de weg
+  if (!roadLinked(from) || !roadLinked(to)) return false;
   const kind = cartKindFor(G.age),
     fly = kind === 'drone',
     route = tripRoute(from, to, fly);
   if (!route) return false;
   // Eén kar tegelijk door de deur: de volgende wacht binnen (d < 0, niet getekend) tot er een tegel ruimte is
-  const spd = CART_SPEED[kind],
+  // Een korte rit gaat wat trager, zodat je hem toch zo'n MIN_TRIP_TIME seconden ziet (alleen voor het beeld)
+  const len = routeLength(route),
+    spd = Math.max(MIN_SPEED, Math.min(CART_SPEED[kind], len / MIN_TRIP_TIME)),
     wait = Math.max(0, (doorFreeAt.get(from.id) ?? 0) - G.t);
   doorFreeAt.set(from.id, G.t + wait + DOOR_GAP / spd);
   carts.push({
@@ -142,7 +149,7 @@ function launch(from: Building, to: Building, res: string, amount: number): bool
     res,
     amt: amount,
     route,
-    len: routeLength(route),
+    len,
     d: -wait * spd,
     prevD: -wait * spd,
     spd,

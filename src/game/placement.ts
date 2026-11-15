@@ -180,6 +180,7 @@ export function placeLine(a: Tile, b: Tile) {
     else {
       const nb = placeBuilding(store.placing!, x, y, false);
       first = first || nb;
+      if (!d.wall) noteSupply(nb, buildCost(store.placing!)); // ook bij een hele rij: karren met bouwstof
     }
   }
   if (n) {

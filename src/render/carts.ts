@@ -9,9 +9,9 @@ import { G } from '../game/state';
 import { camDist } from './camera';
 import { C, bx, cn, cy, mergeWhole, sp } from './kit';
 import { makeVillager, type Limbs } from './people';
-import { S3 } from './scene';
+import { S3, sun } from './scene';
 import { H, W } from '../config';
-import { bmap, node, road } from '../world/world';
+import { TER, bmap, node, road, ter } from '../world/world';
 import { ringTiles } from '../data/roads';
 
 // Zo ver uitgezoomd worden figuurtjes stippen (gelijk aan DOT_DIST in sync.ts): karren tekenen we dan niet meer
@@ -226,8 +226,9 @@ function bodyFor(c: Cart, d: number): BodyMesh {
 export function syncCarts(): void {
   if (!bodies.length) build();
   const far = camDist() > CART_HIDE_DIST;
-  // Schaduwen alleen op Hoog: op Laag en Middel kost elke schaduw een extra tekenbeurt per voertuigsoort
-  const shadows = store.quality === 'high';
+  // Schaduwen alleen als de zon schaduw geeft en niet op Middel: daar kost elke schaduw een extra tekenbeurt per
+  // voertuigsoort (zo doen 'Hoog' en een eigen instelling met schaduwen ook karschaduwen)
+  const shadows = sun.castShadow && store.quality !== 'mid' && store.quality !== 'low';
   if (shadows !== shadowsOn) {
     shadowsOn = shadows;
     for (const b of bodies) b.mesh.castShadow = shadows;
@@ -242,7 +243,7 @@ export function syncCarts(): void {
       if (d < 0) continue; // wacht nog binnen tot de deur vrij is
       const p = pointOnRoute(c.route, d, c.fly ? 0 : LANE_OFFSET);
       let y = 0;
-      if (c.fly) y = DRONE_HEIGHT + Math.sin(store.TM * 2 + c.id) * 0.05;
+      if (c.fly) y = DRONE_HEIGHT + Math.sin(G.t * 2 + c.id) * 0.05;
       else if (c.kind === 'porter') y = Math.abs(Math.sin(d * 3.2 * Math.PI)) * 0.025;
       const body = bodyFor(c, Math.max(0, d)),
         m = body.mesh;
@@ -306,7 +307,8 @@ function freeSpots(x: number, y: number, size: number, want: number): [number, n
   // Hoeken vooraan (verst naar onder en rechts) eerst: die staan het best in beeld
   const order = [...ring.filter(isCorner).reverse(), ...ring.filter(i => !isCorner(i)).reverse()];
   for (const i of order) {
-    if (road[i] || bmap[i] || node[i]) continue;
+    // Niet op een weg, gebouw of grondstof, en niet in het water of op een rots
+    if (road[i] || bmap[i] || node[i] || ter[i] === TER.WATER || ter[i] === TER.ROCK) continue;
     const tx = i % W,
       ty = (i / W) | 0;
     const toward = (t: number, lo: number) => (t < lo ? 0.22 : t >= lo + size ? -0.22 : 0);
