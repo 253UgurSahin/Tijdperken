@@ -12,12 +12,8 @@ import { settled } from '../game/rivals';
 import { groundHeight } from './terrain';
 import { camDist, isFar, s2t } from './camera';
 import { WIND_GUST, addSnow } from './weather';
+import { mergeByMaterial, type NodePart } from './nodemerge';
 
-/** Eén onderdeel van een boom of rots: een vorm (al op zijn plek gezet) en het materiaal. */
-interface NodePart {
-  geo: T3.BufferGeometry;
-  mat: T3.Material;
-}
 function bakePart(
   geo: T3.BufferGeometry,
   m: Paint,
@@ -324,6 +320,14 @@ for (const k in NEAR_DETAIL) {
   NVAR[k].push(...NEAR_DETAIL[k]);
   HIDDEN_FAR[k] = [...(HIDDEN_FAR[k] || []), ...NEAR_DETAIL[k].map((_, i) => from + i)];
 }
+// Per soort de onderdelen met hetzelfde materiaal samengevoegd: één tekenopdracht per materiaal in plaats van
+// per onderdeel. Twee sets: dichtbij (alles) en ver weg (zonder de kleine onderdelen uit HIDDEN_FAR).
+const NEAR_SET: Record<string, NodePart[]> = {},
+  FAR_SET: Record<string, NodePart[]> = {};
+for (const k in NVAR) {
+  NEAR_SET[k] = mergeByMaterial(NVAR[k]);
+  FAR_SET[k] = mergeByMaterial(NVAR[k], HIDDEN_FAR[k]);
+}
 
 // Losse rotsblokken op de bergen: zo zijn de bergen niet glad maar ruw en rotsig.
 // Ze staan half in de grond en krijgen bovenop de berg een laagje sneeuw (lichtere kleur).
@@ -381,11 +385,17 @@ function placeCrags(x0: number, x1: number, y0: number, y1: number, area: Quad) 
     }
   CRAGS.forEach((m, k) => {
     m.count = n[k];
+    m.visible = n[k] > 0;
     m.instanceMatrix.needsUpdate = true;
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
   });
 }
-let NI3: Record<string, T3.InstancedMesh[]> = {};
+/** De getekende vormen van één soort: dichtbij en ver weg (die delen dezelfde plekken en kleuren). */
+interface NodeMeshes {
+  near: T3.InstancedMesh[];
+  far: T3.InstancedMesh[];
+}
+let NI3: Record<string, NodeMeshes> = {};
 // Op "laag" alleen de eenvoudige boomvormen en minder rotsblokken: dat scheelt veel driehoekjes
 let richTrees = true;
 /** Rijke bomen en bergen aan (middel/hoog) of uit (laag); bouwt de bronnen opnieuw op. */
@@ -459,12 +469,20 @@ export function nodesNeedUpdate(): boolean {
   return stretch(view.quad, view.cx, view.cy, 1, 2).some(([x, y]) => !inQuad(area, x, y));
 }
 function applyNodeLook() {
-  for (const v in NI3)
-    NI3[v].forEach((m, k) => {
-      m.castShadow = !farLook && v !== 'oil' && v !== 'sand';
-      // (op "laag" ook dichtbij zonder de kleine onderdelen)
-      m.visible = !((farLook || !richTrees) && HIDDEN_FAR[v]?.includes(k));
-    });
+  // (op "laag" ook dichtbij de set zonder de kleine onderdelen)
+  const useFar = farLook || !richTrees;
+  for (const v in NI3) {
+    const shadow = !farLook && v !== 'oil' && v !== 'sand';
+    // Lege vormen onzichtbaar: dan slaat three.js ze helemaal over (geen shader en geen buffers klaarzetten)
+    for (const m of NI3[v].near) {
+      m.castShadow = shadow;
+      m.visible = !useFar && m.count > 0;
+    }
+    for (const m of NI3[v].far) {
+      m.castShadow = shadow;
+      m.visible = useFar && m.count > 0;
+    }
+  }
 }
 
 // Per tegel: welke vorm (variant) en welk nummer (instance) erop staat, van wat er nu getekend is
@@ -478,7 +496,8 @@ export function hideNode(i: number): void {
   const at = placedAt.get(i);
   if (!at) return; // niet in beeld: dan staat hij er ook niet
   placedAt.delete(i);
-  for (const m of NI3[at[0]] || []) {
+  // (de vormen voor ver weg delen dezelfde plekken, dus die gaan vanzelf mee)
+  for (const m of NI3[at[0]]?.near || []) {
     m.setMatrixAt(at[1], GONE);
     m.instanceMatrix.needsUpdate = true;
   }
@@ -497,7 +516,7 @@ export function rebuildNodes(full?: boolean): void {
     y1 = Math.min(H - 1, Math.ceil(Math.max(...ys)));
   if (full) {
     for (const k in NI3)
-      for (const m of NI3[k]) {
+      for (const m of [...NI3[k].near, ...NI3[k].far]) {
         NGROUP.remove(m);
         m.dispose(); // (de buffers met plekken en kleuren meteen vrijgeven, niet pas bij de garbage collector)
       }
@@ -508,9 +527,10 @@ export function rebuildNodes(full?: boolean): void {
         const v = nodeVar(i);
         cnt[v] = (cnt[v] || 0) + 1;
       }
+    const white = new T3.Color(1, 1, 1);
     for (const v in NVAR) {
       const cap = (cnt[v] || 0) + 200; // ruimte voor nieuwe bronnen (teruggroei, meteorieten)
-      NI3[v] = NVAR[v].map(p => {
+      const instanced = (p: NodePart) => {
         const m = new T3.InstancedMesh(p.geo, p.mat, cap);
         m.receiveShadow = true;
         m.count = 0;
@@ -518,7 +538,23 @@ export function rebuildNodes(full?: boolean): void {
         m.frustumCulled = false;
         NGROUP.add(m);
         return m;
-      });
+      };
+      const near = NEAR_SET[v].map(instanced),
+        far = FAR_SET[v].map(instanced);
+      // Ver weg gebruikt dezelfde buffers met plekken en kleuren als dichtbij: die schrijven we maar één keer.
+      // (Eerst één kleur zetten, zodat de kleurbuffer bestaat voor we hem delen.)
+      for (const m of near) {
+        m.setColorAt(0, white);
+        if (m !== near[0]) {
+          m.instanceMatrix = near[0].instanceMatrix;
+          m.instanceColor = near[0].instanceColor;
+        }
+      }
+      for (const m of far) {
+        m.instanceMatrix = near[0].instanceMatrix;
+        m.instanceColor = near[0].instanceColor;
+      }
+      NI3[v] = { near, far };
     }
   }
   const n: Record<string, number> = {};
@@ -530,10 +566,11 @@ export function rebuildNodes(full?: boolean): void {
       if (!t || bmap[i] || NODES[t].age > G.age) continue;
       if (!inQuad(area, xx + 0.5, yy + 0.5)) continue;
       const v = nodeVar(i),
-        arr = NI3[v];
-      if (!arr) continue;
-      const k = n[v];
-      if (k >= arr[0].instanceMatrix.count) {
+        set = NI3[v];
+      if (!set) continue;
+      const k = n[v],
+        first = set.near[0];
+      if (k >= first.instanceMatrix.count) {
         // Vol: alles opnieuw opbouwen met meer ruimte
         if (!full) return rebuildNodes(true);
         continue;
@@ -553,19 +590,18 @@ export function rebuildNodes(full?: boolean): void {
         tint = 0.86 + h3 * 0.24;
       _c.setRGB(tint * (0.96 + h1 * 0.08), tint * (0.97 + h2 * 0.05), tint * 0.96);
       if (lk) _c.multiply(LOCKED);
-      for (const m of arr) {
-        m.setMatrixAt(k, _m4);
-        m.setColorAt(k, _c);
-      }
+      // (alle vormen van deze soort delen één buffer, dus één keer schrijven is genoeg)
+      first.setMatrixAt(k, _m4);
+      first.setColorAt(k, _c);
       placedAt.set(i, [v, k]);
       n[v] = k + 1;
     }
-  for (const v in NI3)
-    for (const m of NI3[v]) {
-      m.count = n[v];
-      m.instanceMatrix.needsUpdate = true;
-      if (m.instanceColor) m.instanceColor.needsUpdate = true;
-    }
+  for (const v in NI3) {
+    for (const m of [...NI3[v].near, ...NI3[v].far]) m.count = n[v];
+    const first = NI3[v].near[0];
+    first.instanceMatrix.needsUpdate = true;
+    if (first.instanceColor) first.instanceColor.needsUpdate = true;
+  }
   farLook = isFar();
   applyNodeLook();
   placeCrags(x0, x1, y0, y1, area);

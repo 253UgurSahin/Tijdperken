@@ -29,6 +29,7 @@ import { aimTurrets, findTurrets, type TurretState } from './turrets';
 import { makeBuilding, makeCamp, wallMask } from './models';
 import { hideNode, nodesNeedUpdate, rebuildNodes } from './nodes';
 import { FOEK, makeUnit, makeVillager } from './people';
+import { crowdAdd, crowdBegin, crowdEnd } from './crowd';
 import { animEntity, clearDying, initAnim, startDeath, type Animated } from './animate';
 import { LAYER, clearParticles, emit, puff } from './particles';
 import { markOrder } from './effects';
@@ -389,9 +390,10 @@ export function fireSpots(root: T3.Object3D): FireSpot[] {
 }
 // Per beeldje: hoeveel deeltjes alle vuren samen nog mogen loslaten, hoe donker het is en hoe ver je kijkt
 const FIRE_CAP = 40;
-// Hoe fel de gloed rond een vuur 's nachts is. Stel bij als de gloedlaag verandert (zachtere vlekjes met een
-// randversterking hebben minder nodig, zo'n 0,12 tot 0,15).
-const HALO_ALPHA = 0.16;
+// Hoe fel de gloed rond een vuur 's nachts is. 0,35 (met grotere vlekjes): pas dan kleurt het maanlichtgras rond
+// het vuur echt oranje in plaats van olijfgroen, zonder dat de vlam wit uitbrandt. Stel bij als de gloedlaag
+// verandert (zachtere vlekjes met een randversterking hebben minder nodig).
+const HALO_ALPHA = 0.35;
 const fireView = { budget: FIRE_CAP, dark: 0, near: true, range: 10 };
 function startFireFrame() {
   fireView.budget = FIRE_CAP;
@@ -447,7 +449,7 @@ export function fireFx(f: FireSpot, id: number) {
     if (f.halo <= 0 && fireView.budget > 0) {
       f.halo += 0.2;
       fireView.budget--;
-      const haloSize = (0.27 + Math.random() * 0.14) * s;
+      const haloSize = (0.5 + Math.random() * 0.2) * s;
       emit(
         LAYER.glow,
         f.x + (Math.random() - 0.5) * 0.08 * s,
@@ -930,11 +932,17 @@ function showAsDot(r: EntityRec) {
   // Buiten beeld (met wat speling, ook voor de schaduw) hoeft het figuur er ook niet te zijn
   viewSphere.center.set(r.g.position.x, 0.4, r.g.position.z);
   const show = !dots && viewFrustum.intersectsSphere(viewSphere);
-  if (show !== (r.body.parent === r.g)) {
-    if (show) r.g.add(r.body);
+  const still = statues && !!r.statue;
+  // Een vast beeldje tekenen we samen met de rest van zijn soort (zie crowd.ts); het figuur zelf gaat dan
+  // even uit de wereld, net als bij een stip
+  const crowded = show && still && !needsOwnFigure(r);
+  const attached = show && !crowded;
+  if (attached !== (r.body.parent === r.g)) {
+    if (attached) r.g.add(r.body);
     else r.g.remove(r.body);
   }
-  const still = statues && !!r.statue;
+  if (crowded) inCrowd.add(r);
+  else inCrowd.delete(r);
   if (still !== r.statueOn) {
     if (still) {
       r.parts = r.body.children.filter(c => c !== r.statue && c !== r.crown);
@@ -943,6 +951,31 @@ function showAsDot(r: EntityRec) {
     r.statueOn = still;
     // (statue bestaat hier: zonder beeldje is still altijd false)
     r.statue!.visible = still;
+  }
+}
+// Figuren die nu als beeldje in de groep van hun soort staan (een WeakSet: opgeruimde figuren vallen er vanzelf uit)
+const inCrowd = new WeakSet<EntityRec>();
+/**
+ * Moet dit figuur echt los getekend worden? Een omlijning (geselecteerd of aangewezen), de flits van een
+ * treffer en de kroon van een kampioen werken alleen op een eigen figuur, niet op een beeldje in een groep.
+ */
+function needsOwnFigure(r: EntityRec): boolean {
+  const e = r.e,
+    hover = store.hover;
+  if (r.crown || store.TM - r.hitT < 0.25) return true;
+  if (hover && hover.id === e.id && hover.kind === e.kind) return true;
+  return e.kind === 'v' ? sel.vs.has(e.id) : e.kind === 'u' && sel.us.has(e.id);
+}
+const crowdMatrix = new T3.Matrix4();
+/** Alle beeldjes in de groepen zetten (na het bewegen: de houder draagt plek en draaiing, body het wiebelen). */
+function crowdStatues() {
+  for (const r of eRec.values()) {
+    if (!inCrowd.has(r) || !r.g.visible) continue;
+    r.g.updateMatrix();
+    r.body.updateMatrix();
+    crowdMatrix.multiplyMatrices(r.g.matrix, r.body.matrix);
+    // (in inCrowd staan alleen figuren met een beeldje, zie showAsDot)
+    crowdAdd(r.key, r.statue!, crowdMatrix, r.statue!.castShadow);
   }
 }
 /** Het figuur weer helemaal compleet (voor het omvallen of opruimen): alle delen terug, zonder beeldje. */
@@ -975,6 +1008,7 @@ export function syncEntities() {
   viewFrustum.setFromProjectionMatrix(viewMatrix);
   dots = camDist() > DOT_DIST;
   statues = pxu() < STATUE_PX;
+  crowdBegin();
   // (0,25 tegel is de gewone straal van de schijf onder een soldaat, zie syncEnt)
   dotGrow = dots ? Math.max(1, DOT_PX / (0.25 * pxu())) : 1;
   for (const r of eRec.values()) r.seen = 0;
@@ -1065,6 +1099,8 @@ export function syncEntities() {
         startDeath(r);
       } else disposeMerged(r.g);
     }
+  crowdStatues();
+  crowdEnd();
   drawDiscs();
 }
 export function syncCamps() {

@@ -153,6 +153,11 @@ export function mergeStatic(g: T3.Group): T3.Group {
   return g;
 }
 
+// Gloeit dit materiaal zelf (een gloeikleur die niet zwart is)?
+const isGlowing = (m: T3.Material) => {
+  const e = (m as T3.MeshStandardMaterial).emissive;
+  return !!e && (e.r > 0 || e.g > 0 || e.b > 0);
+};
 // Delen met hetzelfde (bijzondere) materiaal tot één mesh, zonder kleuren per hoekpunt
 function mergeSameMaterial(g: T3.Object3D, parts: T3.Mesh[], material: T3.Material): void {
   let n = 0;
@@ -184,7 +189,9 @@ function mergeSameMaterial(g: T3.Object3D, parts: T3.Mesh[], material: T3.Materi
   mg.userData.merged = true; // hoort bij precies één model (zie disposeMerged)
   for (const o of parts) g.remove(o);
   const m = new T3.Mesh(mg, material);
-  m.castShadow = parts.some(o => o.castShadow);
+  // Ramen, glas en gloeiende stukjes liggen plat op of in de muur: hun schaduw valt toch in die van de muur
+  m.castShadow =
+    parts.some(o => o.castShadow) && material !== WIN && material !== GLASS && !isGlowing(material);
   m.receiveShadow = parts.some(o => o.receiveShadow);
   g.add(m);
 }

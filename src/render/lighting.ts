@@ -7,11 +7,14 @@ import { G } from '../game/state';
 import { chargeFrac } from '../data/finale';
 import { isCharging } from '../game/finale';
 import { FAR_DIST, camDist, isFar } from './camera';
-import { GLOWS, glow } from './decals';
+import { GLOWS, glowAt, glowsBegin, glowsEnd } from './decals';
 import { lampSwitchAt, nightWarmup, setCityNight, setLitLamps } from './kit';
+import { lampHash, litShares } from './nightclock';
+import { B } from '../data/buildings';
+import type { Building } from '../types';
+import { nearestK } from '../util/nearest';
 import { CAM3, PL, R3, S3, SUN_DIR, cam, hemi, sun } from './scene';
 import { setBloomDarkness, setGradeTime } from './post';
-import { dist } from '../util/math';
 import { sunDirAt } from '../util/sunpath';
 
 // Zonlicht: perzik bij zonsopkomst, warm wit rond 12 uur, goud en dan oranje bij zonsondergang.
@@ -51,6 +54,19 @@ const AGE_MOOD = (
 ).map((m): [T3.Color, T3.Color, number] | null => m && [new T3.Color(m[0]), new T3.Color(m[1]), m[2]]);
 // Zoveel lichtvlekken van lampen op de grond hooguit (de dichtstbijzijnde)
 const MAX_GLOWS = 96;
+// Zoveel huizen hooguit met een warm schijnsel voor de deur (de dichtstbijzijnde)
+const MAX_DOORS = 64;
+// Kleur van de lichtvlekken: warm (vuur, olielamp) en koel (elektrisch). Het warme licht is diep oranje: geler
+// wordt op groen maanlichtgras olijfgroen in plaats van warm.
+const GLOW_WARM = new T3.Color(255 / 255, 128 / 255, 50 / 255),
+  GLOW_COLD = new T3.Color(200 / 255, 225 / 255, 255 / 255),
+  // Licht uit een deur: wat geler dan vuur, als lamplicht van binnen
+  GLOW_DOOR = new T3.Color(255 / 255, 165 / 255, 85 / 255),
+  PL_WARM = new T3.Color('#ff7f36'),
+  PL_COLD = new T3.Color('#dfe8ff');
+// Steeds hergebruikte lijsten (geen nieuwe lijsten per beeldje): lampen en huizen in de buurt
+const nearLamps: (typeof lights)[number][] = [],
+  nearHomes: Building[] = [];
 // Hangen de lampen (PL) nu in de scène, en zijn we "ver" voor de lampen? (zie lighting)
 let lampsIn = true,
   lampsFar = false;
@@ -61,12 +77,16 @@ let warmupAdded = false;
  * maken we één keer vooraf klaar, bij het eerste beeldje: anders hapert het spel bij de eerste schemering.
  */
 export function precompileNightShaders(): void {
-  const hadLamps = lampsIn;
+  const hadLamps = lampsIn,
+    glowsShown = GLOWS.visible;
   if (!hadLamps) for (const p of PL) S3.add(p);
+  // (de lichtvlekken zijn overdag verborgen; even zichtbaar, zodat ook hun shader klaar is)
+  GLOWS.visible = true;
   try {
     R3.compile(S3, CAM3);
   } finally {
     if (!hadLamps) for (const p of PL) S3.remove(p);
+    GLOWS.visible = glowsShown;
   }
 }
 const moodSun = new T3.Color('#ffffff'),
@@ -203,27 +223,20 @@ export function lighting(dk: number) {
     Math.min(1, Math.max(0, (dk - lampSwitchAt(L.x, L.y)) / 0.03));
   // Lampen rond het beeld die aan zijn, de dichtstbijzijnde eerst. Elk krijgt een lichtvlek op de grond
   // (hooguit MAX_GLOWS: ver uitgezoomd zijn het er soms heel veel) en de dichtstbijzijnde zes ook echt licht.
-  const all = lights.filter(L => lampOn(L) > 0 && dist(L.x, L.y, cam.x, cam.y) < camDist() * 1.2);
-  all.sort((a, b) => dist(a.x, a.y, cam.x, cam.y) - dist(b.x, b.y, cam.x, cam.y));
+  const all = nearestK(lights, cam.x, cam.y, camDist() * 1.2, MAX_GLOWS, nearLamps, L => lampOn(L) > 0);
   // Alleen de koppen van deze lampen gloeien: een lamp zonder stroom (en dus zonder lichtvlek) blijft dof
   setLitLamps(all);
-  // Eén lichtvlek alvast maken (hieronder meteen weer verborgen): dan maakt precompileNightShaders ook zijn
-  // shader vooraf klaar, en komt er bij de eerste schemering op Laag geen enkele shader bij
-  if (!GLOWS.length) glow(0, true);
-  // Om dezelfde reden één keer onzichtbare ramen en een lampkop in de scène (zie nightWarmup in kit.ts)
+  // Eén keer onzichtbare ramen en een lampkop in de scène, zodat hun shaders vooraf klaar zijn (zie nightWarmup
+  // in kit.ts). (De lichtvlekken staan altijd in de scène: zie precompileNightShaders hierboven.)
   if (!warmupAdded) {
     warmupAdded = true;
     S3.add(nightWarmup());
   }
-  let gi = 0;
-  for (const L of all) {
-    if (gi >= MAX_GLOWS) break;
-    const m = glow(gi++, L.warm);
-    m.position.set(L.x, 0.04, L.y);
-    m.scale.setScalar(L.r);
-    m.material.color.setScalar(dk * (L.warm ? 0.42 : 0.32) * lampOn(L));
-  }
-  for (let i = gi; i < GLOWS.length; i++) GLOWS[i].visible = false;
+  glowsBegin();
+  for (const L of all)
+    glowAt(L.x, L.y, L.r, L.warm ? GLOW_WARM : GLOW_COLD, dk * (L.warm ? 0.42 : 0.32) * lampOn(L));
+  if (dk > 0.05) doorSpills(dk);
+  glowsEnd();
   // Ver uitgezoomd geen echte lampen: die zouden maar een paar plekjes midden in beeld verlichten,
   // en alle andere lampen niet. De lichtvlekken op de grond zijn dan genoeg.
   const far = isFar();
@@ -247,7 +260,28 @@ export function lighting(dk: number) {
     }
     p.position.set(L.x, 1.3, L.y);
     p.distance = L.r * 1.9;
-    p.color.set(L.warm ? '#ffa95a' : '#dfe8ff');
+    p.color.copy(L.warm ? PL_WARM : PL_COLD);
     p.intensity = dk * (L.warm ? 0.95 : 1) * (1 + Math.sin(store.TM * 9 + i) * 0.05) * lampOn(L);
   });
+}
+
+/**
+ * Warm schijnsel voor de deur van bewoonde huizen waar het licht brandt: een klein, zwak vlekje (alleen om te
+ * zien, het is geen echte lamp: dorpelingen werken er niet beter door). Dezelfde regel als de ramen: 's avonds
+ * gaan ze huis voor huis aan, na middernacht de meeste weer uit.
+ */
+const isLitHome = (b: Building) => b.done && !!B[b.type].pop;
+function doorSpills(dk: number) {
+  const [evening, night] = litShares(G.clock),
+    share = evening * night;
+  if (share <= 0) return;
+  const homes = nearestK(G.bs, cam.x, cam.y, camDist() * 1.1, MAX_DOORS, nearHomes, isLitHome);
+  for (const b of homes) {
+    // Zacht aan en uit rond het moment van dit huis (vast per huis)
+    const houseLit = Math.min(1, Math.max(0, (share - lampHash(b.x, b.y)) / 0.05));
+    if (houseLit <= 0) continue;
+    const s = B[b.type].size;
+    // De deur zit bij elk model aan de voorkant (de kant met de hoogste y, zie door() in kit.ts)
+    glowAt(b.x + s / 2, b.y + s + 0.15, Math.min(0.8, 0.35 + 0.3 * s), GLOW_DOOR, dk * 0.6 * houseLit);
+  }
 }
