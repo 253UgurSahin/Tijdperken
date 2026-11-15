@@ -5,7 +5,7 @@ import type * as T3 from 'three';
 import { store } from '../core/store';
 import { SET, saveSet } from '../core/settings';
 import { configurePost, type PostSettings } from './post';
-import { PL, requestResize, resize, sun } from './scene';
+import { CANVAS_AA, PL, R3, requestResize, resize, sun } from './scene';
 import { setScatterDensity } from './scatter';
 import { setFineDetail } from './terrainlook';
 import { setNodeDetail } from './nodes';
@@ -82,6 +82,7 @@ export const LEVELS: Record<string, QualityLevel> = {
 };
 const ORDER = ['low', 'mid', 'high'];
 export const COARSE = matchMedia('(pointer:coarse)').matches; // telefoon/tablet: start een stapje lager
+const POST_ALWAYS = !CANVAS_AA && R3.capabilities.isWebGL2 && !COARSE;
 
 let tooHeavy = '',
   tooHeavyAt = 0;
@@ -144,12 +145,19 @@ function customLevel(): QualityLevel {
 // van grootte veranderen maakt het leeg; midden in een beeldje gaf dat een kort zwart beeld.
 function apply(name: string, later?: boolean) {
   level = name;
-  const L = name === 'custom' ? customLevel() : LEVELS[name];
+  const base = name === 'custom' ? customLevel() : LEVELS[name];
+  // Computers met WebGL2 tekenen altijd via de nabewerking, ook op Laag: het canvas zelf is niet gladgestreken
+  // (zie CANVAS_AA in scene.ts), dus zo houdt Laag gladde randen, en krijgt het dezelfde kleuren als Middel
+  // (blauw maanlicht 's nachts). Telefoons en WebGL1 houden hun eigen weg.
+  const L = POST_ALWAYS ? { ...base, post: true } : base;
   store.resScale = L.scale;
   store.pixelBudget = L.pixels; // maximaal aantal pixels voor de 3D-wereld
   store.quality = name;
   store.noParticles = L.particles === false;
   sun.castShadow = L.shadows;
+  // Schaduwkaart: 2048 op Hoog, 1024 op Middel. Sinds het vak om het beeld past (camera.ts) is één pixel van de
+  // kaart bij zoom 0,9 op 1440×900 zo groot: Hoog 0,026 → 0,018 tegel, Middel 0,053 → 0,035 tegel (1,5× scherper).
+  // Hoog kan dus later naar 1536 als dat nodig is; het blijft dan nog scherper dan vroeger.
   if (sun.shadow.mapSize.x !== L.shadowMap) {
     sun.shadow.mapSize.set(L.shadowMap, L.shadowMap);
     if (sun.shadow.map) {

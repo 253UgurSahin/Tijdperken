@@ -29,7 +29,29 @@ export const cam: CamState = { x: CX, y: CY, z: 1, tx: null, ty: null };
 /** Hoe ver een punt naar rechts ligt op het scherm (voor vergelijken), bij de draaiing van nu. */
 export const scrX = (x: number, y: number): number => screenRight(x, y);
 const LOWQ = matchMedia('(pointer:coarse)').matches;
-export const R3 = new T3.WebGLRenderer({ canvas: cv, antialias: !LOWQ, powerPreference: 'high-performance' });
+const HAS_WEBGL2 = (() => {
+  try {
+    return !!document.createElement('canvas').getContext('webgl2');
+  } catch {
+    return false;
+  }
+})();
+/**
+ * Gladde randen op het canvas zelf: alleen nog op computers zonder WebGL2. Met WebGL2 tekenen we de wereld in het
+ * eigen gladgestreken render-doel van de nabewerking (post.ts); het canvas krijgt dan alleen het eindbeeld, en een
+ * gladgestreken canvas zou alleen videogeheugen kosten (zo'n 4,5 keer zoveel per pixel). Telefoons blijven zoals ze waren.
+ */
+export const CANVAS_AA = !LOWQ && !HAS_WEBGL2;
+// Geen stencil: niets in het spel gebruikt hem (de omlijning werkt met opgeblazen achterkanten, zie outline.ts).
+// De diepte blijft: zonder nabewerking (telefoons op Laag, WebGL1) tekenen we direct op het canvas.
+export const R3 = new T3.WebGLRenderer({
+  canvas: cv,
+  antialias: CANVAS_AA,
+  depth: true,
+  // (telefoons houden hun stencil: daar verandert bewust niets, tot het op een echte telefoon gemeten is)
+  stencil: LOWQ,
+  powerPreference: 'high-performance',
+});
 R3.shadowMap.enabled = true;
 R3.shadowMap.type = T3.PCFSoftShadowMap;
 export const S3 = new T3.Scene();

@@ -5,6 +5,7 @@ import { DEFAULT_YAW, viewYaw } from '../core/view';
 import { H, TAU, W } from '../config';
 import { CAM3, S3, SUN_DIR, VH, VW, cam, sun } from './scene';
 import { clamp } from '../util/math';
+import { fitShadowBox, type ShadowBox, type ShadowFitOptions } from '../util/shadowfit';
 
 export const camDist = () => 27 / cam.z;
 /**
@@ -60,40 +61,87 @@ export function updateCamera() {
     CAM3.far = far;
     CAM3.updateProjectionMatrix();
   }
-  // Schaduw in een vierkant rond het midden van het beeld (ook op brede schermen). Verder uitgezoomd dan
-  // vroeger kon, groeit het niet verder mee: zo blijft de schaduw scherp en kost hij niet meer werk.
-  const sc = Math.max(14, Math.min(d, FAR_DIST) * 0.9 * Math.max(1, CAM3.aspect / 1.78));
-  // De zon (of maan) draait mee met de klok (SUN_DIR, zie lighting.ts). Staat hij laag, dan valt het vak van de
-  // schaduwkaart langgerekt over de grond: in de zonrichting maken we het daarom korter (k).
-  const sinEl = SUN_DIR.y,
-    k = clamp(sinEl / 0.83, 0.5, 1);
-  // Zo ver reikt de grond aan de zonkant van het vak de diepte in. De zon staat zo ver weg dat die grond (en
-  // wat erop staat) nog vóór de schaduwcamera ligt; anders ontbreken daar schaduwen als je ver uitzoomt.
-  const sunSide = (sc * k * Math.sqrt(1 - sinEl * sinEl)) / sinEl,
-    D = Math.max(55.6, sunSide + 20);
+  // Schaduw: het vak van de schaduwkaart past precies om wat je ziet (zie fitShadowBox). Zo gaan alle pixels van
+  // de kaart naar het beeld, en zijn de schaduwen scherper dan met een vast vierkant om het midden.
+  const fit = fitShadowToView(reach, tx - cam.x, tz - cam.y);
+  const sinEl = SUN_DIR.y;
+  // De zon staat zo ver weg dat alles aan de zonkant van het vak (en wat erop staat) nog vóór de schaduwcamera
+  // ligt; anders ontbreken daar schaduwen als je ver uitzoomt.
+  const D = Math.max(55.6, fit.depthBehind + 20);
   const sh = sun.shadow.camera;
-  sh.left = -sc;
-  sh.right = sc;
-  sh.top = sc * k;
-  sh.bottom = -sc * k;
+  sh.left = -fit.halfW;
+  sh.right = fit.halfW;
+  sh.top = fit.halfH;
+  sh.bottom = -fit.halfH;
   sh.near = 1;
-  sh.far = 2 * D + 20;
+  sh.far = Math.max(2 * D + 20, D + fit.depthFront + 10);
   sh.updateProjectionMatrix();
   // De marge tegen strepen in de schaduw ("acne") is een deel van de diepte van het vak. We delen door die
   // diepte, zodat de marge in meters gelijk blijft als het vak dieper wordt. Een lage zon scheert over daken
   // en hellingen; die krijgt nog wat extra marge langs de vlakken.
   sun.shadow.bias = -0.13 / (sh.far - sh.near);
   sun.shadow.normalBias = 0.02 + 0.03 * Math.max(0, 1 - sinEl / 0.83);
-  sun.position.set(cam.x + SUN_DIR.x * D, SUN_DIR.y * D, cam.y + SUN_DIR.z * D);
-  sun.target.position.set(cam.x, 0, cam.y);
+  sun.position.set(fit.cx + SUN_DIR.x * D, SUN_DIR.y * D, fit.cz + SUN_DIR.z * D);
+  sun.target.position.set(fit.cx, 0, fit.cz);
   sun.target.updateMatrixWorld();
-  snapShadow(sc);
+  snapShadow(fit.halfW, fit.halfH);
   // Zachte nevel in de verte. Hoe lager de camera kijkt, hoe verder weg hij pas begint: anders wordt het
   // dorp zelf al wazig zodra je inzoomt.
   const fog = S3.fog as T3.Fog;
   fog.near = d * (0.95 + (0.9 - p) * 1.2);
   fog.far = reach;
 }
+// ---- Het vak van de schaduwkaart ----
+
+/** Tot zo hoog (in tegels) moeten dingen aan de rand van het beeld nog schaduw krijgen: hoge torens en wonderen. */
+const ROOF = 4.0;
+const FLOOR_PLANE = new T3.Plane(new T3.Vector3(0, 1, 0), 0),
+  ROOF_PLANE = new T3.Plane(new T3.Vector3(0, 1, 0), -ROOF),
+  FIT_RAY = new T3.Raycaster(),
+  FIT_NDC = new T3.Vector2(),
+  FIT_HIT = new T3.Vector3();
+const FIT_PLANES = [FLOOR_PLANE, ROOF_PLANE];
+const SCREEN_CORNERS: [number, number][] = [
+  [-1, -1],
+  [1, -1],
+  [-1, 1],
+  [1, 1],
+];
+// De 8 hoekpunten: 4 schermhoeken, elk op de grond en op dakhoogte (vooraf gemaakt: geen nieuw geheugen per beeldje)
+const FIT_POINTS: [number, number, number][] = Array.from({ length: 8 }, () => [0, 0, 0]);
+const FIT_SUN: [number, number, number] = [0, 1, 0];
+// Een halve tegel marge is genoeg: de zachte schaduwrand is maar een paar pixels van de kaart breed
+const FIT_OPTS: ShadowFitOptions = { minHalf: 6, maxHalf: 69, step: 2, margin: 0.5 };
+/**
+ * Het vak om wat je nu ziet. reach: hoe ver het beeld reikt (tot de mist); ox, oz: de schok van het scherm, die we
+ * eraf halen zodat een ontploffing het vak (en dus de schaduwen) niet laat trillen.
+ */
+function fitShadowToView(reach: number, ox: number, oz: number): ShadowBox {
+  let n = 0;
+  for (const [sx, sy] of SCREEN_CORNERS) {
+    FIT_NDC.set(sx, sy);
+    FIT_RAY.setFromCamera(FIT_NDC, CAM3);
+    const ray = FIT_RAY.ray;
+    for (const plane of FIT_PLANES) {
+      // Een straal boven in beeld kan bij een lage kijkhoek ver achter de mist de grond raken (of nooit):
+      // dan nemen we het punt waar de mist alles verbergt, anders wordt het vak veel te groot
+      const hit = ray.intersectPlane(plane, FIT_HIT);
+      if (!hit || hit.distanceTo(ray.origin) > reach) ray.at(reach, FIT_HIT);
+      const p = FIT_POINTS[n++];
+      p[0] = FIT_HIT.x - ox;
+      p[1] = FIT_HIT.y;
+      p[2] = FIT_HIT.z - oz;
+    }
+  }
+  FIT_SUN[0] = SUN_DIR.x;
+  FIT_SUN[1] = SUN_DIR.y;
+  FIT_SUN[2] = SUN_DIR.z;
+  // Verder uitgezoomd dan vroeger kon, groeit het vak niet verder mee (net als vroeger het vierkant): zo blijft
+  // de schaduw scherp en kost hij niet meer werk
+  FIT_OPTS.maxHalf = FAR_DIST * 0.9 * Math.max(1, CAM3.aspect / 1.78);
+  return fitShadowBox(FIT_POINTS, FIT_SUN, FIT_OPTS);
+}
+
 /**
  * De schaduwkaart schuift mee met de camera. Schuift hij een halve pixel (van de kaart) op, dan verspringen
  * alle schaduwranden een beetje: dat flikkert bij het verschuiven van het beeld. Daarom zetten we de zon zo
@@ -101,15 +149,12 @@ export function updateCamera() {
  */
 const inLight = new T3.Vector3(),
   shift = new T3.Vector3();
-function snapShadow(sc: number) {
+function snapShadow(halfW: number, halfH: number) {
   const sh = sun.shadow;
-  // Dezelfde verkorting k als in updateCamera (daar uitgelegd)
-  const k = clamp(SUN_DIR.y / 0.83, 0.5, 1);
   sun.updateMatrixWorld();
   sh.updateMatrices(sun); // zet de schaduwcamera op zijn plek
-  // (in de hoogte is het vak k keer zo kort, dus zijn de pixels daar ook kleiner)
-  const texelX = (2 * sc) / sh.mapSize.x,
-    texelY = (2 * sc * k) / sh.mapSize.y;
+  const texelX = (2 * halfW) / sh.mapSize.x,
+    texelY = (2 * halfH) / sh.mapSize.y;
   inLight.copy(sun.target.position).applyMatrix4(sh.camera.matrixWorldInverse);
   shift.set(
     Math.round(inLight.x / texelX) * texelX - inLight.x,
