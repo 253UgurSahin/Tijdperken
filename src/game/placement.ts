@@ -112,6 +112,8 @@ export function canPlace(type: string, x: number, y: number, skipCost?: boolean)
       if (ter[i] === TER.WATER) return 'Hier is water';
       if (ter[i] === TER.ROCK) return 'Hier zijn bergen';
       if (bmap[i]) return 'Hier staat al iets';
+      // Een weg is net als een akker een eigen stuk van je dorp: daar bouw je niet overheen (een poort mag wel)
+      if (road[i] && !d.gate) return 'Hier ligt een weg';
       if (d.needNode) {
         if (node[i] !== NI.oil) return 'Een oliepomp moet op een oliebron staan';
       } else if (nodeVis(i) && !CLEAR.has(NODES[node[i]].k)) return NODES[node[i]].n + ' in de weg';

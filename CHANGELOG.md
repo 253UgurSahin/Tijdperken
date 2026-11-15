@@ -25,6 +25,8 @@ Vooral mooiere graphics, plus een strakkere HUD en een eerlijker begin.
   getallen staan er op zijn Nederlands.
 - **Eerlijk begin:** de coach stuurt je niet meer vast, uitbreiden kost nooit staal, en een kampioen valt pas aan
   na een rustige nacht, met een waarschuwing vooraf.
+- **Niet meer bouwen op een weg:** een weg is net als een akker een eigen stuk van je dorp; alleen een poort mag
+  erop.
 - **Kleine reparatie:** een onschuldige browsermelding (ResizeObserver) geeft geen foutmelding in het spel meer.
 
 ## Versie 0.6.0 (november 2026)
