@@ -21,6 +21,7 @@ interface DevTools {
   centerOn: typeof centerOn;
   place: (type: string, x: number, y: number) => Building;
   GLOWS?: typeof GLOWS;
+  gpu?: typeof gpuReport;
   caches?: typeof caches;
   config?: typeof config;
   meteor?: () => void;
@@ -123,6 +124,8 @@ window.__tp = {
 };
 import { GLOWS } from './render/decals';
 window.__tp.GLOWS = GLOWS;
+import { gpuReport } from './render/gpustats';
+window.__tp.gpu = gpuReport;
 import * as caches from './game/caches';
 window.__tp.caches = caches;
 import * as config from './config';
